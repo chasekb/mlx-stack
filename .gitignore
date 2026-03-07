@@ -10,6 +10,9 @@ build/
 dist/
 *.egg-info/
 
+# Local model storage
+models/
+
 # Bytecode / caches
 __pycache__/
 *.py[cod]

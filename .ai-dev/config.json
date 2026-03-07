@@ -3,7 +3,58 @@
   "stack": {
     "mlx_port": 8081,
     "litellm_port": 4000,
-    "default_model": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
+    "default_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit"
+  },
+  "models": [
+    {
+      "name": "local-mlx-fast",
+      "backend_model": "openai/local-mlx-fast",
+      "api_base": "http://mlx:8081/v1",
+      "api_key": "local-dev",
+      "hf_model": "Qwen/Qwen3.5-Coder-1.5B-Instruct",
+      "mlx_model": "mlx-community/Qwen3.5-Coder-1.5B-Instruct-4bit",
+      "output_path": "models/local-mlx-fast",
+      "quantization": "4bit",
+      "tags": [
+        "fast",
+        "default"
+      ]
+    },
+    {
+      "name": "local-mlx",
+      "backend_model": "openai/local-mlx",
+      "api_base": "http://mlx:8081/v1",
+      "api_key": "local-dev",
+      "hf_model": "Qwen/Qwen3.5-Coder-3B-Instruct",
+      "mlx_model": "mlx-community/Qwen3.5-Coder-3B-Instruct-4bit",
+      "output_path": "models/local-mlx",
+      "quantization": "4bit",
+      "tags": [
+        "quality",
+        "default"
+      ]
+    },
+    {
+      "name": "local-mlx-longctx",
+      "backend_model": "openai/local-mlx-longctx",
+      "api_base": "http://mlx:8081/v1",
+      "api_key": "local-dev",
+      "hf_model": "Qwen/Qwen3.5-Coder-7B-Instruct",
+      "mlx_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
+      "output_path": "models/local-mlx-longctx",
+      "quantization": "4bit",
+      "tags": [
+        "longctx",
+        "analysis"
+      ]
+    }
+  ],
+  "routing": {
+    "fast": "local-mlx-fast",
+    "quality": "local-mlx",
+    "longctx": "local-mlx-longctx",
+    "analysis": "local-mlx-longctx",
+    "default": "local-mlx"
   },
   "cursor": {
     "base_url": "http://localhost:4000/v1",

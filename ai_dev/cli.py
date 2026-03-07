@@ -86,7 +86,7 @@ general_settings:
 MLX_ENTRYPOINT = """#!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_PATH="${MLX_MODEL_PATH:-mlx-community/Qwen2.5-Coder-7B-Instruct-4bit}"
+MODEL_PATH="${MLX_MODEL_PATH:-mlx-community/Qwen3.5-Coder-7B-Instruct-4bit}"
 PORT="${MLX_PORT:-8081}"
 
 python -m mlx_lm.server \
@@ -252,31 +252,47 @@ DEFAULT_CONFIG = {
     "stack": {
         "mlx_port": 8081,
         "litellm_port": 4000,
-        "default_model": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+        "default_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
     },
     "models": [
-        {
-            "name": "local-mlx",
-            "backend_model": "openai/local-mlx",
-            "api_base": "http://mlx:8081/v1",
-            "api_key": "local-dev",
-            "tags": ["default", "quality"],
-        },
         {
             "name": "local-mlx-fast",
             "backend_model": "openai/local-mlx-fast",
             "api_base": "http://mlx:8081/v1",
             "api_key": "local-dev",
-            "tags": ["fast"],
+            "hf_model": "Qwen/Qwen3.5-Coder-1.5B-Instruct",
+            "mlx_model": "mlx-community/Qwen3.5-Coder-1.5B-Instruct-4bit",
+            "quantization": "4bit",
+            "tags": ["fast", "default"],
+        },
+        {
+            "name": "local-mlx",
+            "backend_model": "openai/local-mlx",
+            "api_base": "http://mlx:8081/v1",
+            "api_key": "local-dev",
+            "hf_model": "Qwen/Qwen3.5-Coder-3B-Instruct",
+            "mlx_model": "mlx-community/Qwen3.5-Coder-3B-Instruct-4bit",
+            "quantization": "4bit",
+            "tags": ["quality", "default"],
         },
         {
             "name": "local-mlx-longctx",
             "backend_model": "openai/local-mlx-longctx",
             "api_base": "http://mlx:8081/v1",
             "api_key": "local-dev",
+            "hf_model": "Qwen/Qwen3.5-Coder-7B-Instruct",
+            "mlx_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
+            "quantization": "4bit",
             "tags": ["longctx", "analysis"],
         },
     ],
+    "routing": {
+        "fast": "local-mlx-fast",
+        "quality": "local-mlx",
+        "longctx": "local-mlx-longctx",
+        "analysis": "local-mlx-longctx",
+        "default": "local-mlx",
+    },
     "cursor": {
         "base_url": "http://localhost:4000/v1",
         "api_key": "local-dev",
@@ -333,6 +349,13 @@ def ensure_config_schema(cfg: dict) -> dict:
 
     if "stack" not in cfg or not isinstance(cfg["stack"], dict):
         cfg["stack"] = copy.deepcopy(DEFAULT_CONFIG["stack"])
+
+    if "routing" not in cfg or not isinstance(cfg["routing"], dict):
+        cfg["routing"] = copy.deepcopy(DEFAULT_CONFIG["routing"])
+
+    for m in cfg.get("models", []):
+        if not m.get("output_path"):
+            m["output_path"] = f"models/{m.get('name', 'local-mlx')}"
 
     return cfg
 
@@ -405,17 +428,65 @@ def command_status(_: argparse.Namespace) -> int:
 
 
 def command_pull_models(args: argparse.Namespace) -> int:
-    model = args.model
-    quant = args.quantization
-    commands = [
-        "# Convert/pull a HF model into MLX format",
-        f"python -m mlx_lm.convert --hf-path '{model}' --quantize {quant}",
-        "",
-        "# Test local MLX server model loading",
-        "python -m mlx_lm.server --model ./mlx_model --host 0.0.0.0 --port 8081",
-    ]
-    print("\n".join(commands))
-    return 0
+    cfg = load_config()
+    if args.profile:
+        profiles = [m for m in cfg.get("models", []) if m.get("name") == args.profile]
+    else:
+        profiles = cfg.get("models", [])
+
+    if not profiles:
+        print("No matching model profiles found.", file=sys.stderr)
+        return 2
+
+    commands: list[tuple[str, list[str]]] = []
+    for m in profiles:
+        name = m.get("name", "local-mlx")
+        hf_model = m.get("hf_model") or args.model
+        q = m.get("quantization", f"{args.quantization}bit").replace("bit", "")
+        output_path = m.get("output_path", f"models/{name}")
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "mlx_lm.convert",
+            "--hf-path",
+            hf_model,
+            "--quantize",
+            q,
+            "--output-path",
+            output_path,
+        ]
+        commands.append((name, cmd))
+
+    if args.dry_run:
+        print("Dry run (commands to execute):\n")
+        for name, cmd in commands:
+            print(f"# Profile: {name}")
+            print(" ".join(cmd))
+            print("")
+        return 0
+
+    rc = 0
+    for name, cmd in commands:
+        print(f"[pull-models] Converting profile: {name}")
+        proc = subprocess.run(cmd)
+        if proc.returncode != 0:
+            rc = proc.returncode
+            print(
+                f"[pull-models] Failed for profile '{name}'. "
+                "If mlx-lm is not installed in this Python env, install it first.",
+                file=sys.stderr,
+            )
+            if not args.continue_on_error:
+                return rc
+
+    if rc == 0:
+        print("[pull-models] Completed all model conversions.")
+    else:
+        print("[pull-models] Completed with errors.", file=sys.stderr)
+
+    return rc
 
 
 def iter_source_files(root: Path, max_bytes: int) -> Iterable[Path]:
@@ -756,9 +827,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="Show service status")
     p_status.set_defaults(func=command_status)
 
-    p_pull = sub.add_parser("pull-models", help="Print MLX model conversion commands")
-    p_pull.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct", help="HuggingFace model id")
+    p_pull = sub.add_parser("pull-models", help="Pull/convert configured models into local output paths")
+    p_pull.add_argument("--model", default="Qwen/Qwen3.5-Coder-7B-Instruct", help="Fallback HuggingFace model id")
     p_pull.add_argument("--quantization", default="4", help="Quantization bits for mlx_lm.convert")
+    p_pull.add_argument("--profile", default=None, help="Optional model profile name from .ai-dev/config.json")
+    p_pull.add_argument("--dry-run", action="store_true", help="Print conversion commands without executing")
+    p_pull.add_argument("--continue-on-error", action="store_true", help="Continue converting remaining profiles on failure")
     p_pull.set_defaults(func=command_pull_models)
 
     p_index = sub.add_parser("index", help="Build lightweight lexical index")
