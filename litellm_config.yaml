@@ -4,6 +4,16 @@ model_list:
       model: openai/local-mlx
       api_base: http://mlx:8081/v1
       api_key: local-dev
+  - model_name: local-mlx-fast
+    litellm_params:
+      model: openai/local-mlx-fast
+      api_base: http://mlx:8081/v1
+      api_key: local-dev
+  - model_name: local-mlx-longctx
+    litellm_params:
+      model: openai/local-mlx-longctx
+      api_base: http://mlx:8081/v1
+      api_key: local-dev
 
 general_settings:
   master_key: local-dev

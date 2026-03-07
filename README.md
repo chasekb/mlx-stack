@@ -17,6 +17,7 @@ It provides an `ai-dev` CLI to:
 3. Generate model conversion commands (`pull-models`)
 4. Build a local lightweight code index (`index`)
 5. Generate Cursor configuration snippet (`configure-cursor`)
+6. Show configured multi-model profiles (`models`)
 
 ## Quick start
 
@@ -61,6 +62,14 @@ ai-dev configure-cursor
 ```bash
 ai-dev index .
 ```
+
+### 7) View configured model profiles
+
+```bash
+ai-dev models
+```
+
+This milestone enables multi-model configuration through `.ai-dev/config.json`, and `ai-dev init` now regenerates `litellm_config.yaml` from those model profiles.
 
 ## Notes
 

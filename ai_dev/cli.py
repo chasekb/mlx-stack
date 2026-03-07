@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
-import os
 import re
 import subprocess
 import sys
@@ -168,6 +168,29 @@ DEFAULT_CONFIG = {
         "litellm_port": 4000,
         "default_model": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
     },
+    "models": [
+        {
+            "name": "local-mlx",
+            "backend_model": "openai/local-mlx",
+            "api_base": "http://mlx:8081/v1",
+            "api_key": "local-dev",
+            "tags": ["default", "quality"],
+        },
+        {
+            "name": "local-mlx-fast",
+            "backend_model": "openai/local-mlx-fast",
+            "api_base": "http://mlx:8081/v1",
+            "api_key": "local-dev",
+            "tags": ["fast"],
+        },
+        {
+            "name": "local-mlx-longctx",
+            "backend_model": "openai/local-mlx-longctx",
+            "api_base": "http://mlx:8081/v1",
+            "api_key": "local-dev",
+            "tags": ["longctx", "analysis"],
+        },
+    ],
     "cursor": {
         "base_url": "http://localhost:4000/v1",
         "api_key": "local-dev",
@@ -191,24 +214,71 @@ def write_file(path: Path, content: str, executable: bool = False) -> None:
 
 def load_config() -> dict:
     if CONFIG_PATH.exists():
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    cfg = DEFAULT_CONFIG.copy()
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        return ensure_config_schema(cfg)
+    cfg = copy.deepcopy(DEFAULT_CONFIG)
     cfg["created_at"] = datetime.now(timezone.utc).isoformat()
     return cfg
+
+
+def ensure_config_schema(cfg: dict) -> dict:
+    if "models" not in cfg or not isinstance(cfg["models"], list) or not cfg["models"]:
+        cfg["models"] = copy.deepcopy(DEFAULT_CONFIG["models"])
+
+    if "cursor" not in cfg or not isinstance(cfg["cursor"], dict):
+        cfg["cursor"] = copy.deepcopy(DEFAULT_CONFIG["cursor"])
+
+    if not cfg["cursor"].get("model"):
+        cfg["cursor"]["model"] = cfg["models"][0]["name"]
+
+    if not cfg["cursor"].get("base_url"):
+        cfg["cursor"]["base_url"] = DEFAULT_CONFIG["cursor"]["base_url"]
+
+    if not cfg["cursor"].get("api_key"):
+        cfg["cursor"]["api_key"] = DEFAULT_CONFIG["cursor"]["api_key"]
+
+    if "stack" not in cfg or not isinstance(cfg["stack"], dict):
+        cfg["stack"] = copy.deepcopy(DEFAULT_CONFIG["stack"])
+
+    return cfg
+
+
+def generate_litellm_config(cfg: dict) -> str:
+    models = cfg.get("models") or DEFAULT_CONFIG["models"]
+    lines = ["model_list:"]
+    for m in models:
+        name = m.get("name", "local-mlx")
+        backend_model = m.get("backend_model", "openai/local-mlx")
+        api_base = m.get("api_base", "http://mlx:8081/v1")
+        api_key = m.get("api_key", "local-dev")
+        lines.extend(
+            [
+                f"  - model_name: {name}",
+                "    litellm_params:",
+                f"      model: {backend_model}",
+                f"      api_base: {api_base}",
+                f"      api_key: {api_key}",
+            ]
+        )
+
+    master_key = cfg.get("cursor", {}).get("api_key", "local-dev")
+    lines.extend(["", "general_settings:", f"  master_key: {master_key}"])
+    return "\n".join(lines) + "\n"
 
 
 def command_init(_: argparse.Namespace) -> int:
     APP_DIR.mkdir(parents=True, exist_ok=True)
 
+    config = load_config()
+    config["created_at"] = config.get("created_at") or datetime.now(timezone.utc).isoformat()
+
     write_file(Path("podman-compose.yml"), PODMAN_COMPOSE_YAML)
-    write_file(Path("litellm_config.yaml"), LITELLM_CONFIG)
+    write_file(Path("litellm_config.yaml"), generate_litellm_config(config))
     write_file(Path("mlx/entrypoint.sh"), MLX_ENTRYPOINT, executable=True)
     write_file(Path("mlx/Dockerfile"), MLX_DOCKERFILE)
     write_file(Path("rag/server.py"), RAG_SERVER)
     write_file(Path("agent/server.py"), AGENT_SERVER)
 
-    config = load_config()
-    config["created_at"] = config.get("created_at") or datetime.now(timezone.utc).isoformat()
     write_file(CONFIG_PATH, json.dumps(config, indent=2) + "\n")
 
     print("Initialized local AI dev stack files.")
@@ -353,6 +423,29 @@ def command_configure_cursor(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_models(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    models = cfg.get("models", [])
+
+    if args.json:
+        print(json.dumps(models, indent=2))
+        return 0
+
+    if not models:
+        print("No models configured in .ai-dev/config.json")
+        return 0
+
+    print("Configured model profiles:\n")
+    for m in models:
+        tags = ", ".join(m.get("tags", []))
+        print(f"- {m.get('name', 'unnamed')}")
+        print(f"  backend: {m.get('backend_model', '')}")
+        print(f"  api_base: {m.get('api_base', '')}")
+        if tags:
+            print(f"  tags: {tags}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ai-dev", description="Local AI dev stack orchestration CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -387,6 +480,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_cursor.add_argument("--api-key", default=None)
     p_cursor.add_argument("--model", default=None)
     p_cursor.set_defaults(func=command_configure_cursor)
+
+    p_models = sub.add_parser("models", help="List configured model profiles")
+    p_models.add_argument("--json", action="store_true", help="Print model profiles as JSON")
+    p_models.set_defaults(func=command_models)
 
     return parser
 
