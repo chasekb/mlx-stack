@@ -12,6 +12,19 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - git-aware code memory
 - shared KV cache
 
+## Milestone status
+
+- [x] 0) Current baseline
+- [x] 1) Multi-model inference
+- [x] 2) Repo-aware code generation
+- [ ] 3) Function-calling agents
+- [ ] 4) Automatic repo indexing
+- [ ] 5) Prompt caching
+- [ ] 6) Speculative decoding
+- [ ] 7) Background embedding workers
+- [ ] 8) Git-aware code memory
+- [ ] 9) Shared KV cache
+
 ---
 
 ## 0) Current baseline (already true)
@@ -43,6 +56,14 @@ Serve and route multiple local models through LiteLLM.
 ## Done when
 - You can call different models via one OpenAI-compatible endpoint and switch by model name.
 
+### Completion notes
+
+- Added model profiles in `.ai-dev/config.json` schema (`ai_dev/cli.py`).
+- `ai-dev init` now generates `litellm_config.yaml` from configured model profiles.
+- Added `ai-dev models` to list model profiles.
+- Added tag-based route policy with `ai-dev route-model <task_tag>`.
+- Added `ai-dev configure-cursor --task-tag <tag>` to select routed model for Cursor settings.
+
 ---
 
 ## 2) Repo-aware code generation
@@ -64,6 +85,20 @@ Provide contextual code generation grounded in project files.
 
 ## Done when
 - Prompted coding tasks reliably include accurate local code context.
+
+### Completion notes
+
+- Upgraded `ai-dev index` to produce a two-layer index:
+  - `symbols` (function/class signatures with file+line)
+  - `chunks` (line-bounded chunks with terms and previews)
+- Added `ai-dev retrieve <query>` with:
+  - top-k symbol/chunk ranking
+  - `--path-prefix` filters
+  - git-changed-file bias (optional disable via `--no-changed-bias`)
+  - JSON output for service integration
+- Added retrieval hook endpoint to agent service:
+  - `GET /retrieve?q=...&top_k=...&path_prefix=...`
+  - reads `.ai-dev/index.json` and returns ranked retrieval payload
 
 ---
 

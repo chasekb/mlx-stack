@@ -18,6 +18,8 @@ It provides an `ai-dev` CLI to:
 4. Build a local lightweight code index (`index`)
 5. Generate Cursor configuration snippet (`configure-cursor`)
 6. Show configured multi-model profiles (`models`)
+7. Resolve model routing by task tag (`route-model`)
+8. Retrieve repo-aware symbols/chunks for code generation (`retrieve`)
 
 ## Quick start
 
@@ -70,6 +72,49 @@ ai-dev models
 ```
 
 This milestone enables multi-model configuration through `.ai-dev/config.json`, and `ai-dev init` now regenerates `litellm_config.yaml` from those model profiles.
+
+### 8) Route model selection by task tag
+
+```bash
+ai-dev route-model fast
+ai-dev route-model quality
+ai-dev route-model longctx
+```
+
+You can also generate Cursor config using a task tag:
+
+```bash
+ai-dev configure-cursor --task-tag fast
+```
+
+Supported task tags: `default`, `quality`, `fast`, `longctx`, `analysis`.
+
+### 9) Retrieve repo-aware context
+
+Build the index first:
+
+```bash
+ai-dev index .
+```
+
+Then query symbols/chunks:
+
+```bash
+ai-dev retrieve "model routing for fast tasks"
+ai-dev retrieve "agent retrieval" --path-prefix agent/ --top-k 8
+```
+
+JSON output is available for service integration:
+
+```bash
+ai-dev retrieve "cursor config" --json
+```
+
+The agent service also exposes retrieval over HTTP once running:
+
+```bash
+curl "http://localhost:8091/retrieve?q=cursor%20config&top_k=5"
+```
 
 ## Notes
 

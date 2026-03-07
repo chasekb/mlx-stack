@@ -138,6 +138,66 @@ if __name__ == '__main__':
 
 AGENT_SERVER = """from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
+import re
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+
+ROOT = Path(__file__).resolve().parents[1]
+INDEX_PATH = ROOT / ".ai-dev" / "index.json"
+
+
+def tokenize(text: str) -> list[str]:
+    return [tok for tok in re.split(r"[^a-zA-Z0-9_]+", text.lower()) if len(tok) >= 2]
+
+
+def retrieve(index_obj: dict, query: str, top_k: int = 5, path_prefix: str | None = None) -> dict:
+    query_terms = set(tokenize(query))
+    if not query_terms:
+        return {"query": query, "top_symbols": [], "top_chunks": []}
+
+    path_prefix = path_prefix or ""
+
+    symbol_results = []
+    for s in index_obj.get("symbols", []):
+        score = 0.0
+        name_terms = set(tokenize(s.get("name", "")))
+        score += len(query_terms.intersection(name_terms)) * 3
+        score += 1 if any(t in s.get("name", "").lower() for t in query_terms) else 0
+        p = s.get("path", "")
+        if path_prefix and p.startswith(path_prefix):
+            score += 1.5
+        if score > 0:
+            symbol_results.append({"score": score, **s})
+
+    chunk_results = []
+    for c in index_obj.get("chunks", []):
+        score = 0.0
+        chunk_terms = set(c.get("terms", []))
+        score += len(query_terms.intersection(chunk_terms))
+        p = c.get("path", "")
+        if path_prefix and p.startswith(path_prefix):
+            score += 2.0
+        if score > 0:
+            chunk_results.append(
+                {
+                    "score": score,
+                    "path": p,
+                    "chunk_id": c.get("chunk_id"),
+                    "start_line": c.get("start_line"),
+                    "end_line": c.get("end_line"),
+                    "text_preview": c.get("text_preview", ""),
+                }
+            )
+
+    symbol_results.sort(key=lambda x: x["score"], reverse=True)
+    chunk_results.sort(key=lambda x: x["score"], reverse=True)
+
+    return {
+        "query": query,
+        "top_symbols": symbol_results[:top_k],
+        "top_chunks": chunk_results[:top_k],
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -148,9 +208,35 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(payload).encode('utf-8'))
 
     def do_GET(self):
-        if self.path == '/health':
+        parsed = urlparse(self.path)
+
+        if parsed.path == '/retrieve':
+            if not INDEX_PATH.exists():
+                self._reply({'error': 'missing_index', 'detail': 'Run `ai-dev index .` first.'}, status=400)
+                return
+
+            qs = parse_qs(parsed.query)
+            query = (qs.get('q', [''])[0] or '').strip()
+            if not query:
+                self._reply({'error': 'missing_query', 'detail': 'Provide q=<query>'}, status=400)
+                return
+
+            try:
+                top_k = int((qs.get('top_k', ['5'])[0] or '5'))
+            except ValueError:
+                top_k = 5
+            top_k = max(1, min(top_k, 20))
+            path_prefix = (qs.get('path_prefix', [''])[0] or '').strip() or None
+
+            index_obj = json.loads(INDEX_PATH.read_text(encoding='utf-8'))
+            payload = retrieve(index_obj, query=query, top_k=top_k, path_prefix=path_prefix)
+            self._reply({'ok': True, 'service': 'agent', 'retrieval': payload})
+            return
+
+        if parsed.path == '/health':
             self._reply({'ok': True, 'service': 'agent'})
             return
+
         self._reply({'error': 'not found'}, status=404)
 
 
@@ -196,6 +282,14 @@ DEFAULT_CONFIG = {
         "api_key": "local-dev",
         "model": "local-mlx",
     },
+}
+
+TASK_TAG_ALIASES = {
+    "default": ["default", "quality"],
+    "quality": ["quality", "default"],
+    "fast": ["fast", "default"],
+    "longctx": ["longctx", "analysis", "default"],
+    "analysis": ["analysis", "longctx", "quality", "default"],
 }
 
 
@@ -363,6 +457,80 @@ def tokenize(text: str) -> list[str]:
     return [tok for tok in re.split(r"[^a-zA-Z0-9_]+", text.lower()) if len(tok) >= 2]
 
 
+def extract_symbols(file_path: Path, content: str) -> list[dict]:
+    suffix = file_path.suffix.lower()
+    symbols: list[dict] = []
+    lines = content.splitlines()
+
+    def add(name: str, line_no: int, kind: str) -> None:
+        symbols.append({"name": name, "line": line_no, "kind": kind})
+
+    for i, line in enumerate(lines, start=1):
+        if suffix == ".py":
+            m = re.match(r"^\s*(def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+            if m:
+                add(m.group(2), i, m.group(1))
+        elif suffix in {".js", ".ts", ".jsx", ".tsx"}:
+            m = re.match(r"^\s*(export\s+)?(async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+            if m:
+                add(m.group(3), i, "function")
+            m2 = re.match(r"^\s*(export\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+            if m2:
+                add(m2.group(2), i, "class")
+        elif suffix == ".go":
+            m = re.match(r"^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)", line)
+            if m:
+                add(m.group(1), i, "func")
+        elif suffix == ".rs":
+            m = re.match(r"^\s*(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+            if m:
+                add(m.group(1), i, "fn")
+    return symbols
+
+
+def build_chunks(content: str, lines_per_chunk: int = 80) -> list[dict]:
+    lines = content.splitlines()
+    chunks = []
+    chunk_id = 0
+    for start in range(0, len(lines), lines_per_chunk):
+        chunk_id += 1
+        end = min(start + lines_per_chunk, len(lines))
+        text = "\n".join(lines[start:end])
+        tok_counter = Counter(tokenize(text))
+        chunks.append(
+            {
+                "chunk_id": chunk_id,
+                "start_line": start + 1,
+                "end_line": end,
+                "token_count": sum(tok_counter.values()),
+                "top_terms": dict(tok_counter.most_common(15)),
+                "text_preview": text[:300],
+                "terms": list(tok_counter.keys()),
+            }
+        )
+    return chunks
+
+
+def get_git_changed_files(root: Path) -> set[str]:
+    proc = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return set()
+    changed = set()
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        # format: XY path
+        path = line[3:].strip()
+        if path:
+            changed.add(path)
+    return changed
+
+
 def command_index(args: argparse.Namespace) -> int:
     root = Path(args.path).resolve()
     if not root.exists() or not root.is_dir():
@@ -373,29 +541,45 @@ def command_index(args: argparse.Namespace) -> int:
     file_entries = []
     vocabulary = Counter()
     total_tokens = 0
+    all_symbols = []
+    all_chunks = []
 
     for file_path in iter_source_files(root, max_bytes=args.max_file_size):
         rel = str(file_path.relative_to(root))
         content = file_path.read_text(encoding="utf-8", errors="ignore")
         toks = tokenize(content)
         tok_counter = Counter(toks)
+        symbols = extract_symbols(file_path, content)
+        chunks = build_chunks(content, lines_per_chunk=args.chunk_lines)
         vocabulary.update(tok_counter)
         total_tokens += sum(tok_counter.values())
+
+        for s in symbols:
+            all_symbols.append({"path": rel, **s})
+
+        for c in chunks:
+            all_chunks.append({"path": rel, **c})
+
         file_entries.append(
             {
                 "path": rel,
                 "size": file_path.stat().st_size,
                 "token_count": sum(tok_counter.values()),
+                "symbol_count": len(symbols),
+                "chunk_count": len(chunks),
                 "top_terms": dict(tok_counter.most_common(args.top_terms_per_file)),
             }
         )
 
     index_obj = {
+        "schema_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "root": str(root),
         "file_count": len(file_entries),
         "total_tokens": total_tokens,
         "top_terms_global": dict(vocabulary.most_common(args.top_terms_global)),
+        "symbols": all_symbols,
+        "chunks": all_chunks,
         "files": file_entries,
     }
     write_file(INDEX_PATH, json.dumps(index_obj, indent=2) + "\n")
@@ -403,14 +587,97 @@ def command_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_retrieve(args: argparse.Namespace) -> int:
+    if not INDEX_PATH.exists():
+        print("Missing .ai-dev/index.json. Run `ai-dev index .` first.", file=sys.stderr)
+        return 2
+
+    index_obj = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+    query_terms = set(tokenize(args.query))
+    if not query_terms:
+        print("Query is empty after tokenization.", file=sys.stderr)
+        return 2
+
+    root = Path(index_obj.get("root", "."))
+    changed_files = get_git_changed_files(root) if not args.no_changed_bias else set()
+    path_prefix = args.path_prefix or ""
+
+    symbol_results = []
+    for s in index_obj.get("symbols", []):
+        score = 0.0
+        name_terms = set(tokenize(s.get("name", "")))
+        score += len(query_terms.intersection(name_terms)) * 3
+        score += 1 if any(t in s.get("name", "").lower() for t in query_terms) else 0
+        p = s.get("path", "")
+        if path_prefix and p.startswith(path_prefix):
+            score += 1.5
+        if p in changed_files:
+            score += 1.0
+        if score > 0:
+            symbol_results.append({"score": score, **s})
+
+    chunk_results = []
+    for c in index_obj.get("chunks", []):
+        score = 0.0
+        chunk_terms = set(c.get("terms", []))
+        score += len(query_terms.intersection(chunk_terms))
+        p = c.get("path", "")
+        if path_prefix and p.startswith(path_prefix):
+            score += 2.0
+        if p in changed_files:
+            score += 1.5
+        if score > 0:
+            chunk_results.append(
+                {
+                    "score": score,
+                    "path": p,
+                    "chunk_id": c.get("chunk_id"),
+                    "start_line": c.get("start_line"),
+                    "end_line": c.get("end_line"),
+                    "text_preview": c.get("text_preview", ""),
+                }
+            )
+
+    symbol_results.sort(key=lambda x: x["score"], reverse=True)
+    chunk_results.sort(key=lambda x: x["score"], reverse=True)
+
+    result = {
+        "query": args.query,
+        "top_symbols": symbol_results[: args.top_k],
+        "top_chunks": chunk_results[: args.top_k],
+    }
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"Query: {args.query}\n")
+        print("Top symbols:")
+        for s in result["top_symbols"]:
+            print(f"- {s['path']}:{s.get('line', '?')} {s.get('kind', 'symbol')} {s.get('name', '')} (score={s['score']:.2f})")
+        print("\nTop chunks:")
+        for c in result["top_chunks"]:
+            print(f"- {c['path']}:{c['start_line']}-{c['end_line']} (score={c['score']:.2f})")
+            preview = c.get("text_preview", "").replace("\n", " ")[:140]
+            print(f"  {preview}")
+    return 0
+
+
 def command_configure_cursor(args: argparse.Namespace) -> int:
     cfg = load_config()
+
+    selected_model = args.model
+    if not selected_model and args.task_tag:
+        selected_model = resolve_model_for_tag(cfg.get("models", []), args.task_tag)
+
+    if not selected_model:
+        selected_model = cfg["cursor"]["model"]
+
     cursor_cfg = {
         "name": "Local LiteLLM",
         "provider": "openai",
         "baseUrl": args.base_url or cfg["cursor"]["base_url"],
         "apiKey": args.api_key or cfg["cursor"]["api_key"],
-        "model": args.model or cfg["cursor"]["model"],
+        "model": selected_model,
     }
 
     APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -420,6 +687,32 @@ def command_configure_cursor(args: argparse.Namespace) -> int:
     print("Use the following OpenAI-compatible model config in Cursor:")
     print(json.dumps(cursor_cfg, indent=2))
     print(f"\nSaved: {output_path}")
+    return 0
+
+
+def resolve_model_for_tag(models: list[dict], tag: str) -> str:
+    normalized = (tag or "").strip().lower()
+    preferred_tags = TASK_TAG_ALIASES.get(normalized, [normalized, "default"])
+
+    for wanted in preferred_tags:
+        for m in models:
+            tags = [str(t).lower() for t in m.get("tags", [])]
+            if wanted in tags:
+                return m.get("name", "local-mlx")
+
+    if models:
+        return models[0].get("name", "local-mlx")
+    return "local-mlx"
+
+
+def command_route_model(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    models = cfg.get("models", [])
+    chosen = resolve_model_for_tag(models, args.task_tag)
+    if args.json:
+        print(json.dumps({"task_tag": args.task_tag, "model": chosen}, indent=2))
+    else:
+        print(chosen)
     return 0
 
 
@@ -473,17 +766,37 @@ def build_parser() -> argparse.ArgumentParser:
     p_index.add_argument("--max-file-size", type=int, default=512_000, help="Max file size in bytes")
     p_index.add_argument("--top-terms-per-file", type=int, default=20)
     p_index.add_argument("--top-terms-global", type=int, default=100)
+    p_index.add_argument("--chunk-lines", type=int, default=80, help="Lines per retrieval chunk")
     p_index.set_defaults(func=command_index)
+
+    p_retrieve = sub.add_parser("retrieve", help="Retrieve repo-aware symbols/chunks for a query")
+    p_retrieve.add_argument("query", help="Search query")
+    p_retrieve.add_argument("--top-k", type=int, default=5)
+    p_retrieve.add_argument("--path-prefix", default=None, help="Prefer paths with this prefix")
+    p_retrieve.add_argument("--no-changed-bias", action="store_true", help="Disable bias toward changed git files")
+    p_retrieve.add_argument("--json", action="store_true")
+    p_retrieve.set_defaults(func=command_retrieve)
 
     p_cursor = sub.add_parser("configure-cursor", help="Output Cursor OpenAI-compatible config")
     p_cursor.add_argument("--base-url", default=None)
     p_cursor.add_argument("--api-key", default=None)
     p_cursor.add_argument("--model", default=None)
+    p_cursor.add_argument(
+        "--task-tag",
+        choices=sorted(TASK_TAG_ALIASES.keys()),
+        default=None,
+        help="Select model by routing tag (fast, quality, longctx, analysis, default)",
+    )
     p_cursor.set_defaults(func=command_configure_cursor)
 
     p_models = sub.add_parser("models", help="List configured model profiles")
     p_models.add_argument("--json", action="store_true", help="Print model profiles as JSON")
     p_models.set_defaults(func=command_models)
+
+    p_route = sub.add_parser("route-model", help="Resolve model name for a task tag")
+    p_route.add_argument("task_tag", choices=sorted(TASK_TAG_ALIASES.keys()))
+    p_route.add_argument("--json", action="store_true")
+    p_route.set_defaults(func=command_route_model)
 
     return parser
 
