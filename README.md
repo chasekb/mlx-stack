@@ -116,6 +116,30 @@ The agent service also exposes retrieval over HTTP once running:
 curl "http://localhost:8091/retrieve?q=cursor%20config&top_k=5"
 ```
 
+### 9.1) Automatic incremental indexing (Milestone 4)
+
+You can now run incremental indexing without rebuilding everything each time:
+
+```bash
+# one incremental pass (changed files only when possible)
+ai-dev index --once .
+
+# keep index fresh in a polling daemon
+ai-dev index --daemon --interval 2 .
+```
+
+Optional: install git hooks so branch/merge events trigger a safe background reindex:
+
+```bash
+ai-dev index --install-git-hooks .
+```
+
+This installs/updates `.git/hooks/post-checkout` and `.git/hooks/post-merge` to run:
+
+```bash
+python3 -m ai_dev.cli index --once .
+```
+
 ### 10) Function-calling agent loop (Milestone 3 foundation)
 
 The agent service now exposes a JSON tool schema and task-run endpoint:

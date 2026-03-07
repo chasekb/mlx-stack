@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Iterable
 APP_DIR = Path(".ai-dev")
 CONFIG_PATH = APP_DIR / "config.json"
 INDEX_PATH = APP_DIR / "index.json"
+INDEX_STATE_PATH = APP_DIR / "index_state.json"
 
 
 PODMAN_COMPOSE_YAML = """version: '3.8'
@@ -737,6 +739,13 @@ def iter_source_files(root: Path, max_bytes: int) -> Iterable[Path]:
         yield p
 
 
+def collect_source_files(root: Path, max_bytes: int) -> dict[str, Path]:
+    files: dict[str, Path] = {}
+    for p in iter_source_files(root, max_bytes=max_bytes):
+        files[str(p.relative_to(root))] = p
+    return files
+
+
 def tokenize(text: str) -> list[str]:
     return [tok for tok in re.split(r"[^a-zA-Z0-9_]+", text.lower()) if len(tok) >= 2]
 
@@ -815,45 +824,160 @@ def get_git_changed_files(root: Path) -> set[str]:
     return changed
 
 
-def command_index(args: argparse.Namespace) -> int:
-    root = Path(args.path).resolve()
-    if not root.exists() or not root.is_dir():
-        print(f"Path not found or not a directory: {root}", file=sys.stderr)
-        return 2
+def load_index_state(expected_root: Path) -> dict:
+    if not INDEX_STATE_PATH.exists():
+        return {}
+    try:
+        state = json.loads(INDEX_STATE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if str(expected_root) != str(state.get("root", "")):
+        return {}
+    return state
 
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    file_entries = []
+
+def save_index_state(root: Path, file_meta: dict[str, dict]) -> None:
+    payload = {
+        "schema_version": 1,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "root": str(root),
+        "files": file_meta,
+    }
+    write_file(INDEX_STATE_PATH, json.dumps(payload, indent=2) + "\n")
+
+
+def install_index_git_hooks() -> None:
+    hooks_dir = Path(".git") / "hooks"
+    if not hooks_dir.exists():
+        print("No .git/hooks directory found. Initialize git first.", file=sys.stderr)
+        raise SystemExit(2)
+
+    marker = "# ai-dev-auto-index"
+    hook_snippet = (
+        f"{marker}\n"
+        "if command -v python3 >/dev/null 2>&1; then\n"
+        "  python3 -m ai_dev.cli index --once . >/dev/null 2>&1 || true\n"
+        "fi\n"
+    )
+
+    for hook_name in ("post-checkout", "post-merge"):
+        hook_path = hooks_dir / hook_name
+        if hook_path.exists():
+            existing = hook_path.read_text(encoding="utf-8", errors="ignore")
+            if marker in existing:
+                continue
+            if not existing.endswith("\n"):
+                existing += "\n"
+            content = existing + "\n" + hook_snippet
+        else:
+            content = "#!/usr/bin/env bash\nset -euo pipefail\n\n" + hook_snippet
+
+        write_file(hook_path, content, executable=True)
+
+
+def _index_single_file(file_path: Path, root: Path, top_terms_per_file: int, chunk_lines: int) -> tuple[dict, list[dict], list[dict]]:
+    rel = str(file_path.relative_to(root))
+    content = file_path.read_text(encoding="utf-8", errors="ignore")
+    tok_counter = Counter(tokenize(content))
+    symbols = extract_symbols(file_path, content)
+    chunks = build_chunks(content, lines_per_chunk=chunk_lines)
+
+    file_entry = {
+        "path": rel,
+        "size": file_path.stat().st_size,
+        "token_count": sum(tok_counter.values()),
+        "symbol_count": len(symbols),
+        "chunk_count": len(chunks),
+        "top_terms": dict(tok_counter.most_common(top_terms_per_file)),
+    }
+
+    symbol_rows = [{"path": rel, **s} for s in symbols]
+    chunk_rows = [{"path": rel, **c} for c in chunks]
+    return file_entry, symbol_rows, chunk_rows
+
+
+def run_index_pass(root: Path, args: argparse.Namespace, incremental: bool) -> tuple[dict, dict]:
+    current_files = collect_source_files(root, max_bytes=args.max_file_size)
+    current_meta = {
+        rel: {"size": p.stat().st_size, "mtime_ns": p.stat().st_mtime_ns}
+        for rel, p in current_files.items()
+    }
+
+    prev_index = {}
+    if INDEX_PATH.exists():
+        try:
+            prev_index = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            prev_index = {}
+    if str(root) != str(prev_index.get("root", "")):
+        prev_index = {}
+
+    prev_state = load_index_state(root)
+    prev_meta = prev_state.get("files", {}) if isinstance(prev_state.get("files", {}), dict) else {}
+
+    changed_paths = sorted(rel for rel in current_files if prev_meta.get(rel) != current_meta.get(rel))
+    removed_paths = sorted(set(prev_meta.keys()) - set(current_files.keys()))
+
+    if incremental and prev_index and not changed_paths and not removed_paths:
+        stats = {
+            "mode": "incremental",
+            "changed": 0,
+            "removed": 0,
+            "reused": len(current_files),
+            "indexed": 0,
+            "skipped_write": True,
+        }
+        return prev_index, stats
+
+    prev_files_by_path = {f.get("path"): f for f in prev_index.get("files", []) if f.get("path")}
+    prev_symbols_by_path: dict[str, list[dict]] = {}
+    for s in prev_index.get("symbols", []):
+        p = s.get("path")
+        if p:
+            prev_symbols_by_path.setdefault(p, []).append(s)
+    prev_chunks_by_path: dict[str, list[dict]] = {}
+    for c in prev_index.get("chunks", []):
+        p = c.get("path")
+        if p:
+            prev_chunks_by_path.setdefault(p, []).append(c)
+
+    file_entries: list[dict] = []
+    all_symbols: list[dict] = []
+    all_chunks: list[dict] = []
     vocabulary = Counter()
     total_tokens = 0
-    all_symbols = []
-    all_chunks = []
+    indexed_count = 0
+    reused_count = 0
 
-    for file_path in iter_source_files(root, max_bytes=args.max_file_size):
-        rel = str(file_path.relative_to(root))
-        content = file_path.read_text(encoding="utf-8", errors="ignore")
-        toks = tokenize(content)
-        tok_counter = Counter(toks)
-        symbols = extract_symbols(file_path, content)
-        chunks = build_chunks(content, lines_per_chunk=args.chunk_lines)
-        vocabulary.update(tok_counter)
-        total_tokens += sum(tok_counter.values())
-
-        for s in symbols:
-            all_symbols.append({"path": rel, **s})
-
-        for c in chunks:
-            all_chunks.append({"path": rel, **c})
-
-        file_entries.append(
-            {
-                "path": rel,
-                "size": file_path.stat().st_size,
-                "token_count": sum(tok_counter.values()),
-                "symbol_count": len(symbols),
-                "chunk_count": len(chunks),
-                "top_terms": dict(tok_counter.most_common(args.top_terms_per_file)),
-            }
+    for rel in sorted(current_files.keys()):
+        path = current_files[rel]
+        can_reuse = (
+            incremental
+            and rel in prev_files_by_path
+            and rel not in changed_paths
+            and rel in prev_symbols_by_path
+            and rel in prev_chunks_by_path
         )
+
+        if can_reuse:
+            reused_count += 1
+            file_entry = prev_files_by_path[rel]
+            symbols = prev_symbols_by_path[rel]
+            chunks = prev_chunks_by_path[rel]
+        else:
+            indexed_count += 1
+            file_entry, symbols, chunks = _index_single_file(
+                path,
+                root,
+                top_terms_per_file=args.top_terms_per_file,
+                chunk_lines=args.chunk_lines,
+            )
+
+        file_entries.append(file_entry)
+        all_symbols.extend(symbols)
+        all_chunks.extend(chunks)
+        total_tokens += int(file_entry.get("token_count", 0))
+        vocabulary.update(file_entry.get("top_terms", {}))
 
     index_obj = {
         "schema_version": 2,
@@ -865,9 +989,74 @@ def command_index(args: argparse.Namespace) -> int:
         "symbols": all_symbols,
         "chunks": all_chunks,
         "files": file_entries,
+        "index_mode": "incremental" if incremental else "full",
     }
-    write_file(INDEX_PATH, json.dumps(index_obj, indent=2) + "\n")
-    print(f"Indexed {len(file_entries)} files -> {INDEX_PATH}")
+
+    stats = {
+        "mode": "incremental" if incremental else "full",
+        "changed": len(changed_paths),
+        "removed": len(removed_paths),
+        "reused": reused_count,
+        "indexed": indexed_count,
+        "skipped_write": False,
+    }
+    return index_obj, stats
+
+
+def command_index(args: argparse.Namespace) -> int:
+    root = Path(args.path).resolve()
+    if not root.exists() or not root.is_dir():
+        print(f"Path not found or not a directory: {root}", file=sys.stderr)
+        return 2
+
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.install_git_hooks:
+        install_index_git_hooks()
+        print("Installed git hooks: post-checkout, post-merge")
+
+    def execute_once(incremental: bool) -> int:
+        index_obj, stats = run_index_pass(root=root, args=args, incremental=incremental)
+        if stats.get("skipped_write"):
+            print("No source changes detected. Index is already up to date.")
+            return 0
+
+        write_file(INDEX_PATH, json.dumps(index_obj, indent=2) + "\n")
+        file_meta = {
+            f["path"]: {
+                "size": int(f.get("size", 0)),
+                "mtime_ns": int((root / f["path"]).stat().st_mtime_ns) if (root / f["path"]).exists() else 0,
+            }
+            for f in index_obj.get("files", [])
+        }
+        save_index_state(root=root, file_meta=file_meta)
+
+        print(
+            f"Indexed {index_obj.get('file_count', 0)} files -> {INDEX_PATH} "
+            f"(mode={stats['mode']}, indexed={stats['indexed']}, reused={stats['reused']}, removed={stats['removed']})"
+        )
+        return 0
+
+    if args.daemon:
+        print(f"Starting index daemon (interval={args.interval}s). Press Ctrl+C to stop.")
+        try:
+            while True:
+                execute_once(incremental=True)
+                time.sleep(max(0.5, args.interval))
+        except KeyboardInterrupt:
+            print("Index daemon stopped.")
+            return 0
+
+    if args.once:
+        return execute_once(incremental=True)
+
+    return execute_once(incremental=False)
+
+
+def _configure_index_mode_args(p_index: argparse.ArgumentParser) -> None:
+    mode_group = p_index.add_mutually_exclusive_group()
+    mode_group.add_argument("--once", action="store_true", help="Run one incremental indexing pass")
+    mode_group.add_argument("--daemon", action="store_true", help="Continuously run incremental indexing")
     return 0
 
 
@@ -1054,6 +1243,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_index.add_argument("--top-terms-per-file", type=int, default=20)
     p_index.add_argument("--top-terms-global", type=int, default=100)
     p_index.add_argument("--chunk-lines", type=int, default=80, help="Lines per retrieval chunk")
+    _configure_index_mode_args(p_index)
+    p_index.add_argument("--interval", type=float, default=2.0, help="Daemon polling interval in seconds")
+    p_index.add_argument(
+        "--install-git-hooks",
+        action="store_true",
+        help="Install post-checkout and post-merge hooks to trigger incremental indexing",
+    )
     p_index.set_defaults(func=command_index)
 
     p_retrieve = sub.add_parser("retrieve", help="Retrieve repo-aware symbols/chunks for a query")

@@ -18,7 +18,7 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - [x] 1) Multi-model inference
 - [x] 2) Repo-aware code generation
 - [x] 3) Function-calling agents
-- [ ] 4) Automatic repo indexing
+- [x] 4) Automatic repo indexing
 - [ ] 5) Prompt caching
 - [ ] 6) Speculative decoding
 - [ ] 7) Background embedding workers
@@ -155,6 +155,21 @@ Keep index fresh without manual `ai-dev index` calls.
 
 ## Done when
 - Retrieval quality stays current after edits/branch switches.
+
+### Completion notes
+
+- Added incremental indexing support to `ai-dev index` in `ai_dev/cli.py`:
+  - `ai-dev index --once .` performs one incremental pass
+  - `ai-dev index --daemon --interval <seconds> .` runs continuous incremental passes
+- Added index state tracking file:
+  - `.ai-dev/index_state.json` stores per-file metadata (`size`, `mtime_ns`) for change detection.
+- Added reuse + tombstone-aware behavior:
+  - unchanged files reuse prior indexed symbols/chunks
+  - deleted files are removed from the new index output
+  - no-op incremental runs skip index rewrite with a clear message
+- Added optional git hook integration:
+  - `ai-dev index --install-git-hooks .` installs/updates `.git/hooks/post-checkout` and `.git/hooks/post-merge`
+  - hooks trigger `python3 -m ai_dev.cli index --once .` in a safe best-effort mode.
 
 ---
 
