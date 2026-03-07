@@ -116,6 +116,35 @@ The agent service also exposes retrieval over HTTP once running:
 curl "http://localhost:8091/retrieve?q=cursor%20config&top_k=5"
 ```
 
+### 10) Function-calling agent loop (Milestone 3 foundation)
+
+The agent service now exposes a JSON tool schema and task-run endpoint:
+
+```bash
+# List available tools and input schemas
+curl "http://localhost:8091/tools"
+
+# Run an agent task with a provided plan (dry-run by default)
+curl -X POST "http://localhost:8091/agent/run" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "Inspect code and suggest improvements",
+    "dry_run": true,
+    "max_steps": 4,
+    "plan": [
+      {"tool": "git_diff", "args": {}},
+      {"tool": "search_code", "args": {"regex": "def command_", "file_pattern": "*.py"}},
+      {"tool": "read_file", "args": {"path": "ai_dev/cli.py", "max_chars": 1200}}
+    ]
+  }'
+```
+
+Run traces are saved to `.ai-dev/runs/<run_id>.json` and can be retrieved via:
+
+```bash
+curl "http://localhost:8091/runs/<run_id>"
+```
+
 ## Notes
 
 - This is a developer-friendly starter orchestration layer, intentionally lightweight.

@@ -13,6 +13,9 @@ dist/
 # Local model storage
 models/
 
+# Local ai-dev runtime artifacts
+.ai-dev/runs/
+
 # Bytecode / caches
 __pycache__/
 *.py[cod]

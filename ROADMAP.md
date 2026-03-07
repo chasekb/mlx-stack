@@ -17,7 +17,7 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - [x] 0) Current baseline
 - [x] 1) Multi-model inference
 - [x] 2) Repo-aware code generation
-- [ ] 3) Function-calling agents
+- [x] 3) Function-calling agents
 - [ ] 4) Automatic repo indexing
 - [ ] 5) Prompt caching
 - [ ] 6) Speculative decoding
@@ -120,6 +120,21 @@ Agent can plan, call tools, and apply edits safely.
 
 ## Done when
 - Agent can complete controlled code tasks with auditable tool traces.
+
+### Completion notes
+
+- Upgraded `agent/server.py` with a JSON-style function-calling loop endpoint:
+  - `POST /agent/run` accepts `{ task, dry_run, max_steps, plan[] }`
+- Added tool schema discovery endpoint:
+  - `GET /tools` returns available tools and input contracts.
+- Implemented initial tool set with guardrails:
+  - `retrieve`, `search_code`, `read_file`, `git_diff`, `run_tests`, `write_patch`, `commit_changes`
+  - allowlist enforced (`ALLOWED_TOOLS`)
+  - `dry_run` blocks mutating tools (`write_patch`, `commit_changes`)
+  - bounded `max_steps` execution budget
+- Added run trace persistence for auditability:
+  - traces written to `.ai-dev/runs/<run_id>.json`
+  - retrievable via `GET /runs/<run_id>`
 
 ---
 
