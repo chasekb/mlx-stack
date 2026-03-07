@@ -1,0 +1,222 @@
+# From Current Stack to Advanced Local AI Platform
+
+This roadmap starts from your current working baseline (`ai-dev`, MLX container, LiteLLM gateway, basic indexing) and moves toward:
+
+- multi-model inference
+- repo-aware code generation
+- function-calling agents
+- automatic repo indexing
+- prompt caching
+- speculative decoding
+- background embedding workers
+- git-aware code memory
+- shared KV cache
+
+---
+
+## 0) Current baseline (already true)
+
+- `ai-dev init/up/down/status/index/configure-cursor` exists.
+- MLX + LiteLLM services are defined.
+- CI smoke workflow runs in GitHub Actions.
+
+This is enough to start iterating feature-by-feature.
+
+---
+
+## 1) Multi-model inference (first milestone)
+
+## Goal
+Serve and route multiple local models through LiteLLM.
+
+## Implementation
+
+1. **Add model profiles to `.ai-dev/config.json`**
+   - e.g. `coder_fast`, `coder_strong`, `analysis_longctx`.
+2. **Extend `litellm_config.yaml` generation** in `ai_dev/cli.py`
+   - emit multiple `model_list` entries.
+3. **Add `ai-dev models` command**
+   - list available profiles and endpoints.
+4. **Add simple route policy**
+   - choose model by task tags (`fast`, `quality`, `longctx`).
+
+## Done when
+- You can call different models via one OpenAI-compatible endpoint and switch by model name.
+
+---
+
+## 2) Repo-aware code generation
+
+## Goal
+Provide contextual code generation grounded in project files.
+
+## Implementation
+
+1. Replace lexical-only index with a two-layer index:
+   - **symbol index** (functions/classes/exports)
+   - **chunk index** (semantic chunks + metadata).
+2. Add `ai-dev retrieve` command:
+   - query → top-k chunks/symbols.
+3. Add retrieval hook in agent flow:
+   - inject top context into prompts before generation.
+4. Add path filters:
+   - prioritize changed files and relevant directories.
+
+## Done when
+- Prompted coding tasks reliably include accurate local code context.
+
+---
+
+## 3) Function-calling agents
+
+## Goal
+Agent can plan, call tools, and apply edits safely.
+
+## Implementation
+
+1. Upgrade `agent/server.py` into a JSON-RPC style tool loop.
+2. Define tool schema set:
+   - `search_code`, `read_file`, `write_patch`, `run_tests`, `git_diff`, `commit_changes`.
+3. Add execution guardrails:
+   - dry-run mode
+   - allowlist commands
+   - max-step budget.
+4. Add trace logging to `.ai-dev/runs/<id>.json`.
+
+## Done when
+- Agent can complete controlled code tasks with auditable tool traces.
+
+---
+
+## 4) Automatic repo indexing
+
+## Goal
+Keep index fresh without manual `ai-dev index` calls.
+
+## Implementation
+
+1. Add file watcher worker (`watchdog`) to detect file changes.
+2. Incremental indexing pipeline:
+   - changed files only
+   - tombstones for deleted files.
+3. Git hooks integration:
+   - optional post-checkout/post-merge reindex trigger.
+4. Add `ai-dev index --daemon` and `ai-dev index --once` modes.
+
+## Done when
+- Retrieval quality stays current after edits/branch switches.
+
+---
+
+## 5) Prompt caching
+
+## Goal
+Reduce repeated prompt latency/cost.
+
+## Implementation
+
+1. Add cache middleware in LiteLLM or agent layer.
+2. Cache key design:
+   - model + normalized prompt + tool context hash + options.
+3. TTL + invalidation:
+   - invalidate on index version change and branch switch.
+4. Add metrics:
+   - hit rate, saved tokens, latency reduction.
+
+## Done when
+- Repeated/refinement prompts return significantly faster with high hit rate.
+
+---
+
+## 6) Speculative decoding
+
+## Goal
+Use draft model + target model for faster generation.
+
+## Implementation
+
+1. Serve a small draft model and stronger target model.
+2. Add orchestrator service (`spec-router`) between LiteLLM and MLX servers.
+3. Implement accept/reject token loop and fallback.
+4. Enable only for latency-sensitive tasks (code completion/editing).
+
+## Done when
+- Median generation latency drops while quality remains comparable.
+
+---
+
+## 7) Background embedding workers
+
+## Goal
+Continuously embed chunks/events without blocking inference.
+
+## Implementation
+
+1. Add queue (Redis or SQLite-backed queue to start).
+2. Worker service consumes file-change jobs.
+3. Embed with local model and upsert into Qdrant.
+4. Add backpressure + retries + dead-letter queue.
+
+## Done when
+- Embeddings are updated asynchronously and reliably.
+
+---
+
+## 8) Git-aware code memory
+
+## Goal
+Make retrieval branch/commit aware.
+
+## Implementation
+
+1. Attach git metadata to each chunk:
+   - commit SHA, branch, file path, symbol, timestamp.
+2. Maintain branch namespace in vector store.
+3. During retrieval, bias current branch + recent commits.
+4. Add `ai-dev memory explain <query>` for transparency.
+
+## Done when
+- Retrieval reflects the active branch and recent development history.
+
+---
+
+## 9) Shared KV cache
+
+## Goal
+Reuse model KV states across related requests/sessions.
+
+## Implementation
+
+1. Introduce session-aware inference gateway.
+2. Track conversation prefix hashes for cache reuse eligibility.
+3. Implement per-model memory budget and LRU eviction.
+4. Add safeguards:
+   - tenant/session isolation
+   - prompt-boundary validation.
+
+## Done when
+- Follow-up turns and repeated context windows are notably faster.
+
+---
+
+## Suggested execution order (practical)
+
+1. Multi-model inference
+2. Automatic/incremental indexing
+3. Repo-aware retrieval for code generation
+4. Function-calling agent loop
+5. Background embedding workers + Qdrant hardening
+6. Prompt caching
+7. Git-aware memory
+8. Speculative decoding
+9. Shared KV cache
+
+---
+
+## Minimal next sprint (1 week)
+
+- Add model profiles + `ai-dev models`.
+- Add incremental index update command.
+- Add retrieval endpoint in `agent/server.py`.
+- Add basic tool-calling contract and execution logs.
+- Add metrics file (`.ai-dev/metrics.json`) for latency/hit rates.
