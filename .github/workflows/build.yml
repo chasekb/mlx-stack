@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: CLI help smoke test
+        run: |
+          ai-dev --help
+
+      - name: Generate stack files
+        run: |
+          ai-dev init
+
+      - name: Generate Cursor config
+        run: |
+          ai-dev configure-cursor
+
+      - name: Build lexical index
+        run: |
+          ai-dev index .
+
+      - name: Verify expected outputs
+        run: |
+          test -f podman-compose.yml
+          test -f litellm_config.yaml
+          test -f mlx/entrypoint.sh
+          test -f mlx/Dockerfile
+          test -f rag/server.py
+          test -f agent/server.py
+          test -f .ai-dev/config.json
+          test -f .ai-dev/cursor-openai.json
+          test -f .ai-dev/index.json
