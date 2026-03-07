@@ -169,6 +169,46 @@ Run traces are saved to `.ai-dev/runs/<run_id>.json` and can be retrieved via:
 curl "http://localhost:8091/runs/<run_id>"
 ```
 
+### 11) Prompt caching + metrics (Milestone 5)
+
+The agent service now supports local prompt/result caching for `/agent/run`.
+
+- Cache key includes normalized task payload fields (`task`, `dry_run`, `max_steps`, `plan`, options)
+- Cache namespace includes git branch and index signature for invalidation
+- TTL is configurable per request (default: 600 seconds)
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8091/agent/run" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "Inspect code and suggest improvements",
+    "dry_run": true,
+    "max_steps": 2,
+    "plan": [{"tool":"git_diff","args":{}}],
+    "cache": {"enabled": true, "ttl_seconds": 600}
+  }'
+```
+
+Response includes cache metadata:
+
+- `cache.hit` (`false` on miss, `true` on hit)
+- `cache.namespace`
+- `cache.key`
+- `cache.compute_ms`
+
+You can view aggregate cache metrics at:
+
+```bash
+curl "http://localhost:8091/metrics"
+```
+
+Local cache/metrics files are written under `.ai-dev/`:
+
+- `.ai-dev/prompt_cache.json`
+- `.ai-dev/metrics.json`
+
 ## Notes
 
 - This is a developer-friendly starter orchestration layer, intentionally lightweight.

@@ -19,7 +19,7 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - [x] 2) Repo-aware code generation
 - [x] 3) Function-calling agents
 - [x] 4) Automatic repo indexing
-- [ ] 5) Prompt caching
+- [x] 5) Prompt caching
 - [ ] 6) Speculative decoding
 - [ ] 7) Background embedding workers
 - [ ] 8) Git-aware code memory
@@ -190,6 +190,22 @@ Reduce repeated prompt latency/cost.
 
 ## Done when
 - Repeated/refinement prompts return significantly faster with high hit rate.
+
+### Completion notes
+
+- Added local prompt/result caching to `agent/server.py` for `POST /agent/run`.
+- Cache key design implemented via normalized task payload hashing:
+  - `task`, `model`, `dry_run`, `max_steps`, `plan`, `tool_context_hash`, `options`
+- Cache namespace now includes invalidation-sensitive context:
+  - current git branch
+  - current index signature (`schema_version`, `generated_at`, `file_count`)
+- Added configurable cache controls in request payload:
+  - `cache.enabled` (default `true`)
+  - `cache.ttl_seconds` (default `600`, bounded)
+  - `cache.refresh` (force bypass + rewrite)
+- Added cache metrics tracking and endpoint:
+  - `GET /metrics`
+  - persists to `.ai-dev/metrics.json` with requests/hits/misses/hit_rate/saved_calls.
 
 ---
 

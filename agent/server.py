@@ -2,6 +2,8 @@ import json
 import re
 import subprocess
 import uuid
+import hashlib
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -12,6 +14,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = ROOT / ".ai-dev" / "index.json"
 RUNS_DIR = ROOT / ".ai-dev" / "runs"
+CACHE_PATH = ROOT / ".ai-dev" / "prompt_cache.json"
+METRICS_PATH = ROOT / ".ai-dev" / "metrics.json"
+DEFAULT_CACHE_TTL_SECONDS = 600
 ALLOWED_TOOLS = {
     "retrieve",
     "search_code",
@@ -52,6 +57,160 @@ TOOL_SCHEMAS = {
         "input": {"message": "string"},
     },
 }
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def load_json_file(path: Path, default):
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def save_json_file(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def get_git_branch() -> str:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return "unknown"
+    return (proc.stdout or "").strip() or "unknown"
+
+
+def get_index_signature() -> str:
+    if not INDEX_PATH.exists():
+        return "no-index"
+    try:
+        index_obj = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return "index-unreadable"
+    generated_at = str(index_obj.get("generated_at", "unknown"))
+    schema_version = str(index_obj.get("schema_version", "?"))
+    file_count = str(index_obj.get("file_count", "?"))
+    return f"sv{schema_version}:{generated_at}:{file_count}"
+
+
+def compute_cache_namespace() -> str:
+    return f"branch={get_git_branch()}|index={get_index_signature()}"
+
+
+def normalize_task_payload(payload: dict) -> dict:
+    return {
+        "task": str(payload.get("task", "")).strip(),
+        "model": payload.get("model"),
+        "dry_run": bool(payload.get("dry_run", True)),
+        "max_steps": int(payload.get("max_steps", 6)),
+        "plan": payload.get("plan", []),
+        "tool_context_hash": payload.get("tool_context_hash"),
+        "options": payload.get("options", {}),
+    }
+
+
+def compute_cache_key(payload: dict) -> str:
+    canonical = json.dumps(normalize_task_payload(payload), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def load_cache() -> dict:
+    cache = load_json_file(CACHE_PATH, {"schema_version": 1, "updated_at": utc_now_iso(), "entries": {}})
+    if not isinstance(cache, dict):
+        return {"schema_version": 1, "updated_at": utc_now_iso(), "entries": {}}
+    if not isinstance(cache.get("entries"), dict):
+        cache["entries"] = {}
+    return cache
+
+
+def save_cache(cache_obj: dict) -> None:
+    cache_obj["updated_at"] = utc_now_iso()
+    save_json_file(CACHE_PATH, cache_obj)
+
+
+def get_cache_entry(cache_obj: dict, key: str, namespace: str) -> Optional[dict]:
+    entry = cache_obj.get("entries", {}).get(key)
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("namespace") != namespace:
+        return None
+    expires_at = float(entry.get("expires_at_epoch", 0.0) or 0.0)
+    now = time.time()
+    if expires_at and now > expires_at:
+        cache_obj.get("entries", {}).pop(key, None)
+        return None
+    return entry
+
+
+def set_cache_entry(cache_obj: dict, key: str, namespace: str, result: dict, ttl_seconds: int) -> None:
+    now = time.time()
+    cache_obj.setdefault("entries", {})[key] = {
+        "namespace": namespace,
+        "created_at": utc_now_iso(),
+        "created_at_epoch": now,
+        "expires_at_epoch": now + max(1, ttl_seconds),
+        "result": result,
+    }
+
+
+def load_metrics() -> dict:
+    metrics = load_json_file(
+        METRICS_PATH,
+        {
+            "schema_version": 1,
+            "updated_at": utc_now_iso(),
+            "cache": {
+                "requests": 0,
+                "hits": 0,
+                "misses": 0,
+                "hit_rate": 0.0,
+                "saved_calls": 0,
+                "compute_ms_total": 0.0,
+                "avg_compute_ms": 0.0,
+            },
+        },
+    )
+    if not isinstance(metrics, dict):
+        return {"schema_version": 1, "updated_at": utc_now_iso(), "cache": {}}
+    metrics.setdefault("cache", {})
+    return metrics
+
+
+def record_cache_metrics(hit: bool, compute_ms: float, namespace: str, key: str) -> None:
+    metrics = load_metrics()
+    cache_metrics = metrics.setdefault("cache", {})
+    requests = int(cache_metrics.get("requests", 0)) + 1
+    hits = int(cache_metrics.get("hits", 0)) + (1 if hit else 0)
+    misses = int(cache_metrics.get("misses", 0)) + (0 if hit else 1)
+    saved_calls = int(cache_metrics.get("saved_calls", 0)) + (1 if hit else 0)
+    compute_ms_total = float(cache_metrics.get("compute_ms_total", 0.0)) + max(0.0, compute_ms)
+
+    cache_metrics.update(
+        {
+            "requests": requests,
+            "hits": hits,
+            "misses": misses,
+            "hit_rate": round(hits / requests, 4) if requests else 0.0,
+            "saved_calls": saved_calls,
+            "compute_ms_total": round(compute_ms_total, 4),
+            "avg_compute_ms": round(compute_ms_total / misses, 4) if misses else 0.0,
+            "last_namespace": namespace,
+            "last_key": key,
+            "last_status": "hit" if hit else "miss",
+            "last_updated": utc_now_iso(),
+        }
+    )
+    metrics["updated_at"] = utc_now_iso()
+    save_json_file(METRICS_PATH, metrics)
 
 
 def tokenize(text: str) -> list[str]:
@@ -250,6 +409,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
+        if parsed.path == '/metrics':
+            metrics = load_metrics()
+            self._reply({'ok': True, 'service': 'agent', 'metrics': metrics})
+            return
+
         if parsed.path == '/tools':
             self._reply({'ok': True, 'service': 'agent', 'tools': TOOL_SCHEMAS})
             return
@@ -311,8 +475,53 @@ class Handler(BaseHTTPRequestHandler):
             self._reply({'error': 'invalid_json'}, status=400)
             return
 
-        result = run_agent_task(payload if isinstance(payload, dict) else {})
-        self._reply({'ok': True, 'service': 'agent', 'result': result})
+        payload = payload if isinstance(payload, dict) else {}
+        cache_cfg = payload.get("cache", {}) if isinstance(payload.get("cache", {}), dict) else {}
+        cache_enabled = bool(cache_cfg.get("enabled", True))
+        cache_refresh = bool(cache_cfg.get("refresh", False))
+        ttl_seconds = int(cache_cfg.get("ttl_seconds", DEFAULT_CACHE_TTL_SECONDS) or DEFAULT_CACHE_TTL_SECONDS)
+        ttl_seconds = max(1, min(ttl_seconds, 86_400))
+
+        namespace = compute_cache_namespace()
+        key = compute_cache_key(payload)
+        cache_hit = False
+        started = time.perf_counter()
+        result = None
+
+        if cache_enabled and not cache_refresh:
+            cache_obj = load_cache()
+            entry = get_cache_entry(cache_obj, key=key, namespace=namespace)
+            if entry and isinstance(entry.get("result"), dict):
+                result = entry["result"]
+                cache_hit = True
+                save_cache(cache_obj)
+
+        if result is None:
+            result = run_agent_task(payload)
+            if cache_enabled:
+                cache_obj = load_cache()
+                set_cache_entry(cache_obj, key=key, namespace=namespace, result=result, ttl_seconds=ttl_seconds)
+                save_cache(cache_obj)
+
+        compute_ms = (time.perf_counter() - started) * 1000.0
+        record_cache_metrics(hit=cache_hit, compute_ms=compute_ms, namespace=namespace, key=key)
+
+        self._reply(
+            {
+                'ok': True,
+                'service': 'agent',
+                'result': result,
+                'cache': {
+                    'enabled': cache_enabled,
+                    'refresh': cache_refresh,
+                    'hit': cache_hit,
+                    'ttl_seconds': ttl_seconds,
+                    'namespace': namespace,
+                    'key': key,
+                    'compute_ms': round(compute_ms, 2),
+                },
+            }
+        )
 
 
 if __name__ == '__main__':

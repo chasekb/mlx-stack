@@ -16,6 +16,8 @@ models/
 # Local ai-dev runtime artifacts
 .ai-dev/runs/
 .ai-dev/index_state.json
+.ai-dev/prompt_cache.json
+.ai-dev/metrics.json
 
 # Bytecode / caches
 __pycache__/
