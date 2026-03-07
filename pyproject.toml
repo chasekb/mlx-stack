@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-ai-dev-orchestrator"
+version = "0.1.0"
+description = "Local AI dev stack orchestrator for MLX + LiteLLM + Cursor"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Local AI Dev" }
+]
+dependencies = []
+
+[project.scripts]
+ai-dev = "ai_dev.cli:main"
+
+[tool.setuptools]
+packages = ["ai_dev"]

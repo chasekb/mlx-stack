@@ -1,0 +1,7 @@
+{
+  "name": "Local LiteLLM",
+  "provider": "openai",
+  "baseUrl": "http://localhost:4000/v1",
+  "apiKey": "local-dev",
+  "model": "local-mlx"
+}

@@ -1,0 +1,9 @@
+model_list:
+  - model_name: local-mlx
+    litellm_params:
+      model: openai/local-mlx
+      api_base: http://mlx:8081/v1
+      api_key: local-dev
+
+general_settings:
+  master_key: local-dev
