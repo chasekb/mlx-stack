@@ -412,10 +412,10 @@ following items remain incomplete for production-grade behavior.
 ### D) Quality, testing, and observability
 
 1. Add unit/integration tests for:
-   - retrieval scoring and explain output
-   - queue retry/dead-letter behavior
-   - KV cache prefix/budget/eviction edge cases
-   - agent tool execution paths.
+   - [ ] retrieval scoring and explain output
+   - [ ] queue retry/dead-letter behavior
+   - [ ] KV cache prefix/budget/eviction edge cases
+   - [x] agent tool execution paths (`write_patch` dry-run/deny/success paths).
 2. Expand observability:
    - structured event traces across services
    - richer metrics for cache/queue/retrieval latencies
@@ -424,7 +424,15 @@ following items remain incomplete for production-grade behavior.
 ### E) Template/runtime drift prevention
 
 1. Reduce duplication between runtime service files and template literals in `ai_dev/cli.py`.
-2. Add CI checks to enforce template/runtime parity where duplication remains.
+2. [x] Add CI checks to enforce template/runtime parity where duplication remains.
+
+#### E completion notes (parity enforcement slice)
+
+- Added `tools/check_template_parity.py` to enforce parity between:
+  - `agent/server.py`
+  - embedded `AGENT_SERVER` template in `ai_dev/cli.py`
+- Integrated parity validation into CI (`.github/workflows/build.yml`).
+- Added `tests/test_agent_write_patch.py` and wired unit-test execution in CI.
 
 ### F) Codebase refactoring and modularization
 

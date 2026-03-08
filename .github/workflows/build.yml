@@ -52,3 +52,11 @@ jobs:
           test -f .ai-dev/config.json
           test -f .ai-dev/cursor-openai.json
           test -f .ai-dev/index.json
+
+      - name: Check template/runtime parity
+        run: |
+          python tools/check_template_parity.py
+
+      - name: Run unit tests
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py' -v

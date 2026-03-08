@@ -690,7 +690,7 @@ def load_json_file(path: Path, default):
 
 def save_json_file(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2) + "\\n", encoding="utf-8")
 
 
 def get_git_branch() -> str:
@@ -830,7 +830,7 @@ def record_cache_metrics(hit: bool, compute_ms: float, namespace: str, key: str)
 
 
 def estimate_tokens(text: str) -> int:
-    return max(1, len([t for t in re.split(r"\s+", (text or "").strip()) if t]))
+    return max(1, len([t for t in re.split(r"\\s+", (text or "").strip()) if t]))
 
 
 def normalize_prefix_text(payload: dict) -> str:
@@ -1054,7 +1054,7 @@ def normalize_patch_path(path_text: str) -> Optional[str]:
     rel = str(path_text or "").strip().strip('"').strip("'")
     if not rel or rel == "/dev/null":
         return None
-    rel = rel.replace("\\", "/")
+    rel = rel.replace("\\\\", "/")
     if rel.startswith("a/") or rel.startswith("b/"):
         rel = rel[2:]
     while rel.startswith("./"):
@@ -1077,7 +1077,7 @@ def extract_patch_paths(patch_text: str) -> list[str]:
         elif line.startswith("+++ "):
             rel = normalize_patch_path(line[4:])
         elif line.startswith("*** Add File:") or line.startswith("*** Update File:") or line.startswith("*** Delete File:"):
-            m = re.match(r"^\*\*\* (?:Add|Update|Delete) File: (.+?)(?:\s+->.+)?$", line)
+            m = re.match(r"^\\*\\*\\* (?:Add|Update|Delete) File: (.+?)(?:\\s+->.+)?$", line)
             if m:
                 rel = normalize_patch_path(m.group(1))
 
@@ -1093,7 +1093,7 @@ def path_allowed_for_patch(rel_path: str) -> bool:
     p = Path(rel_path)
     if p.is_absolute() or ".." in p.parts:
         return False
-    normalized = rel_path.replace("\\", "/")
+    normalized = rel_path.replace("\\\\", "/")
     for deny_prefix in PATCH_DENY_PREFIXES:
         if normalized.startswith(deny_prefix):
             return False
@@ -1305,7 +1305,7 @@ def run_agent_task(payload: dict) -> dict:
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     run_path = RUNS_DIR / f"{run_id}.json"
-    run_path.write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
+    run_path.write_text(json.dumps(trace, indent=2) + "\\n", encoding="utf-8")
 
     return {
         "ok": True,
