@@ -401,7 +401,25 @@ following items remain incomplete for production-grade behavior.
 ### B) Real inference-level acceleration (vs simulation)
 
 1. Upgrade shared KV cache from orchestration metadata to actual model-backend KV reuse.
-2. Upgrade speculative decoding from token-list scaffold to real draft/target streaming integration.
+2. Upgrade speculative decoding from token-list scaffold to real draft/target integration.
+   - [x] live draft/target model-call decode path (prompt -> draft/target completion requests)
+   - [ ] streaming token acceptance loop across draft/target backends.
+
+#### B completion notes (spec decode integration slice)
+
+- Upgraded `spec_router/server.py` to support model-backed speculative decode runs:
+  - supports prompt-driven draft + target model calls (OpenAI-compatible completions endpoint)
+  - preserves token-list direct mode for deterministic tests/backward compatibility
+  - gracefully handles draft call failures while still producing target output.
+- Added richer decode response metadata:
+  - source mode (`provided_tokens` vs `model_calls`)
+  - per-model token counts and latency timings
+  - draft error surface when fallback behavior is triggered.
+- Added test coverage in `tests/test_spec_router.py` for:
+  - acceptance math in token mode
+  - prompt mode model-call behavior
+  - draft fallback path
+  - input validation errors.
 
 ### C) Embedding pipeline productionization
 

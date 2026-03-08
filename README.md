@@ -246,6 +246,21 @@ ai-dev spec-decode \
   --target-tokens def hello "(name)"
 ```
 
+Prompt-driven draft/target mode (model-backed):
+
+```bash
+ai-dev spec-decode \
+  --prompt "Write a Python function to add two numbers" \
+  --draft-model local-mlx-fast \
+  --target-model local-mlx \
+  --draft-url http://localhost:4000/v1/completions \
+  --target-url http://localhost:4000/v1/completions \
+  --max-tokens 96
+```
+
+In prompt mode, `spec-router` calls both draft and target model endpoints, compares tokenized outputs,
+and reports acceptance stats plus per-call timing (`draft_call_ms`, `target_call_ms`).
+
 ### 13) Background embedding workers (Milestone 7)
 
 This repo now includes a lightweight background embedding pipeline:

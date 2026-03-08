@@ -175,8 +175,74 @@ if __name__ == '__main__':
 """
 
 
-SPEC_ROUTER_SERVER = """import json
+SPEC_ROUTER_SERVER = """from __future__ import annotations
+
+import json
+import os
+import re
+import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+def tokenize_text(text: str) -> list[str]:
+    return [tok for tok in re.split(r"\s+", (text or "").strip()) if tok]
+
+
+def http_json(method: str, url: str, payload: dict | None = None, timeout: float = 20.0) -> dict:
+    data = json.dumps(payload or {}).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method=method,
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = resp.read().decode("utf-8")
+    return json.loads(body) if body else {}
+
+
+def extract_completion_text(resp: dict) -> str:
+    if not isinstance(resp, dict):
+        return ""
+    choices = resp.get("choices", []) if isinstance(resp.get("choices", []), list) else []
+    if not choices:
+        return ""
+    c0 = choices[0] if isinstance(choices[0], dict) else {}
+    text = c0.get("text")
+    if isinstance(text, str) and text.strip():
+        return text
+    msg = c0.get("message") if isinstance(c0.get("message"), dict) else {}
+    content = msg.get("content")
+    if isinstance(content, str):
+        return content
+    return ""
+
+
+def request_model_tokens(
+    *,
+    api_url: str,
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    timeout: float,
+) -> tuple[list[str], float]:
+    started = time.perf_counter()
+    resp = http_json(
+        "POST",
+        api_url.rstrip("/"),
+        payload={
+            "model": model,
+            "prompt": prompt,
+            "max_tokens": max(1, int(max_tokens)),
+            "temperature": 0,
+        },
+        timeout=timeout,
+    )
+    text = extract_completion_text(resp)
+    took_ms = (time.perf_counter() - started) * 1000.0
+    return tokenize_text(text), took_ms
 
 
 def run_speculative_loop(draft_tokens: list[str], target_tokens: list[str]) -> dict:
@@ -203,6 +269,75 @@ def run_speculative_loop(draft_tokens: list[str], target_tokens: list[str]) -> d
         "acceptance_rate": round(acceptance_rate, 4),
         "output_tokens": out_tokens,
     }
+
+
+def run_speculative_decode(payload: dict) -> dict:
+    draft_tokens = payload.get("draft_tokens", [])
+    target_tokens = payload.get("target_tokens", [])
+
+    if isinstance(draft_tokens, list) and isinstance(target_tokens, list) and (draft_tokens or target_tokens):
+        result = run_speculative_loop(
+            draft_tokens=[str(t) for t in draft_tokens],
+            target_tokens=[str(t) for t in target_tokens],
+        )
+        result["source"] = "provided_tokens"
+        return result
+
+    prompt = str(payload.get("prompt", "") or "").strip()
+    if not prompt:
+        raise ValueError("missing_prompt_or_tokens")
+
+    draft_model = str(payload.get("draft_model") or os.environ.get("SPEC_DRAFT_MODEL", "local-mlx-fast"))
+    target_model = str(payload.get("target_model") or os.environ.get("SPEC_TARGET_MODEL", "local-mlx"))
+    draft_url = str(
+        payload.get("draft_url") or os.environ.get("SPEC_DRAFT_URL", "http://localhost:4000/v1/completions")
+    )
+    target_url = str(
+        payload.get("target_url") or os.environ.get("SPEC_TARGET_URL", "http://localhost:4000/v1/completions")
+    )
+    max_tokens = int(payload.get("max_tokens", 128) or 128)
+    timeout = float(payload.get("timeout", 20.0) or 20.0)
+
+    draft_tokens_out: list[str] = []
+    target_tokens_out: list[str] = []
+    draft_ms = 0.0
+    target_ms = 0.0
+    draft_error = ""
+
+    try:
+        draft_tokens_out, draft_ms = request_model_tokens(
+            api_url=draft_url,
+            model=draft_model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+    except Exception as e:
+        draft_error = str(e)
+
+    target_tokens_out, target_ms = request_model_tokens(
+        api_url=target_url,
+        model=target_model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        timeout=timeout,
+    )
+
+    result = run_speculative_loop(draft_tokens=draft_tokens_out, target_tokens=target_tokens_out)
+    result.update(
+        {
+            "source": "model_calls",
+            "draft_model": draft_model,
+            "target_model": target_model,
+            "draft_token_count": len(draft_tokens_out),
+            "target_token_count": len(target_tokens_out),
+            "draft_call_ms": round(draft_ms, 2),
+            "target_call_ms": round(target_ms, 2),
+        }
+    )
+    if draft_error:
+        result["draft_error"] = draft_error
+    return result
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -235,16 +370,17 @@ class Handler(BaseHTTPRequestHandler):
             self._reply({"error": "invalid_json"}, status=400)
             return
 
-        draft_tokens = payload.get("draft_tokens", [])
-        target_tokens = payload.get("target_tokens", [])
-        if not isinstance(draft_tokens, list) or not isinstance(target_tokens, list):
-            self._reply({"error": "invalid_tokens", "detail": "draft_tokens and target_tokens must be arrays"}, status=400)
+        try:
+            result = run_speculative_decode(payload)
+        except ValueError as e:
+            self._reply({"error": str(e)}, status=400)
             return
-
-        result = run_speculative_loop(
-            draft_tokens=[str(t) for t in draft_tokens],
-            target_tokens=[str(t) for t in target_tokens],
-        )
+        except urllib.error.URLError as e:
+            self._reply({"error": "model_backend_unreachable", "detail": str(e)}, status=502)
+            return
+        except Exception as e:
+            self._reply({"error": "decode_failed", "detail": str(e)}, status=500)
+            return
         self._reply({"ok": True, "service": "spec-router", "result": result})
 
 
@@ -2827,23 +2963,36 @@ def _tokenize_for_spec(text: str) -> list[str]:
 
 
 def command_spec_decode(args: argparse.Namespace) -> int:
-    draft_tokens: list[str]
-    target_tokens: list[str]
+    payload: dict = {}
 
-    if args.draft_tokens:
-        draft_tokens = [t for t in args.draft_tokens if t]
+    if args.prompt:
+        payload = {
+            "prompt": args.prompt,
+            "draft_model": args.draft_model,
+            "target_model": args.target_model,
+            "draft_url": args.draft_url,
+            "target_url": args.target_url,
+            "max_tokens": args.max_tokens,
+            "timeout": args.timeout,
+        }
     else:
-        draft_tokens = _tokenize_for_spec(args.draft_text)
+        draft_tokens: list[str]
+        target_tokens: list[str]
 
-    if args.target_tokens:
-        target_tokens = [t for t in args.target_tokens if t]
-    else:
-        target_tokens = _tokenize_for_spec(args.target_text)
+        if args.draft_tokens:
+            draft_tokens = [t for t in args.draft_tokens if t]
+        else:
+            draft_tokens = _tokenize_for_spec(args.draft_text)
 
-    payload = {
-        "draft_tokens": draft_tokens,
-        "target_tokens": target_tokens,
-    }
+        if args.target_tokens:
+            target_tokens = [t for t in args.target_tokens if t]
+        else:
+            target_tokens = _tokenize_for_spec(args.target_text)
+
+        payload = {
+            "draft_tokens": draft_tokens,
+            "target_tokens": target_tokens,
+        }
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
@@ -2871,6 +3020,14 @@ def command_spec_decode(args: argparse.Namespace) -> int:
         return 0
 
     result = parsed.get("result", {}) if isinstance(parsed, dict) else {}
+    if result.get("source") == "model_calls":
+        print(f"source: {result.get('source')}")
+        print(f"draft_model: {result.get('draft_model', '')}")
+        print(f"target_model: {result.get('target_model', '')}")
+        print(f"draft_call_ms: {result.get('draft_call_ms', 0)}")
+        print(f"target_call_ms: {result.get('target_call_ms', 0)}")
+        if result.get("draft_error"):
+            print(f"draft_error: {result.get('draft_error')}")
     print(f"accepted_tokens: {result.get('accepted_tokens', 0)}")
     print(f"compared_tokens: {result.get('compared_tokens', 0)}")
     print(f"acceptance_rate: {result.get('acceptance_rate', 0.0)}")
@@ -3022,6 +3179,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_spec = sub.add_parser("spec-decode", help="Run speculative decode loop via local spec-router")
     p_spec.add_argument("--url", default="http://localhost:8092", help="Spec-router base URL")
     p_spec.add_argument("--timeout", type=float, default=10.0)
+    p_spec.add_argument("--prompt", default="", help="Prompt text for model-backed speculative decode mode")
+    p_spec.add_argument("--draft-model", default="local-mlx-fast", help="Draft model name for prompt mode")
+    p_spec.add_argument("--target-model", default="local-mlx", help="Target model name for prompt mode")
+    p_spec.add_argument(
+        "--draft-url",
+        default="http://localhost:4000/v1/completions",
+        help="Draft model completion endpoint for prompt mode",
+    )
+    p_spec.add_argument(
+        "--target-url",
+        default="http://localhost:4000/v1/completions",
+        help="Target model completion endpoint for prompt mode",
+    )
+    p_spec.add_argument("--max-tokens", type=int, default=128, help="Completion max tokens for prompt mode")
     p_spec.add_argument("--draft-text", default="", help="Draft model text to tokenize on spaces")
     p_spec.add_argument("--target-text", default="", help="Target model text to tokenize on spaces")
     p_spec.add_argument("--draft-tokens", nargs="*", default=None, help="Explicit draft tokens")
