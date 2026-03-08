@@ -371,3 +371,64 @@ Reuse model KV states across related requests/sessions.
 - Add retrieval endpoint in `agent/server.py`.
 - Add basic tool-calling contract and execution logs.
 - Add metrics file (`.ai-dev/metrics.json`) for latency/hit rates.
+
+---
+
+## Missing / incomplete functionality backlog (post-milestone hardening)
+
+The milestone checkboxes above are complete at a **foundation** level, but the
+following items remain incomplete for production-grade behavior.
+
+### A) Agent mutation path hardening
+
+1. [x] Implement `write_patch` in agent tools (no longer `not_implemented`).
+2. [x] Add guarded patch application flow:
+   - [x] preflight diff validation
+   - [x] file allow/deny policy
+   - [x] rollback safety for failed post-apply verification.
+
+#### A completion notes (hardening slice)
+
+- `agent/server.py` now implements `tool_write_patch` with:
+  - dry-run mutation blocking
+  - payload size guard
+  - patch target extraction + path normalization
+  - denylist/root-boundary enforcement (including `.git/`)
+  - `git apply --check` preflight before apply
+  - snapshot + rollback on post-apply verification failure
+- Synced the `AGENT_SERVER` embedded template in `ai_dev/cli.py` to prevent runtime/template drift.
+
+### B) Real inference-level acceleration (vs simulation)
+
+1. Upgrade shared KV cache from orchestration metadata to actual model-backend KV reuse.
+2. Upgrade speculative decoding from token-list scaffold to real draft/target streaming integration.
+
+### C) Embedding pipeline productionization
+
+1. Replace fake/hash embeddings with real local embedding model inference.
+2. Add robust Qdrant upsert/query integration path (beyond JSONL sink fallback).
+3. Add embedding schema/versioning + reindex migration tooling.
+
+### D) Quality, testing, and observability
+
+1. Add unit/integration tests for:
+   - retrieval scoring and explain output
+   - queue retry/dead-letter behavior
+   - KV cache prefix/budget/eviction edge cases
+   - agent tool execution paths.
+2. Expand observability:
+   - structured event traces across services
+   - richer metrics for cache/queue/retrieval latencies
+   - optional alert thresholds.
+
+### E) Template/runtime drift prevention
+
+1. Reduce duplication between runtime service files and template literals in `ai_dev/cli.py`.
+2. Add CI checks to enforce template/runtime parity where duplication remains.
+
+### F) Codebase refactoring and modularization
+
+1. Refactor `ai_dev/cli.py` into smaller modules (command groups + shared utilities) to reduce coupling and file size.
+2. Extract embedded service templates/constants from `ai_dev/cli.py` into dedicated template files or a template package.
+3. Split `agent/server.py` into focused modules (cache, kv-cache, tool execution, HTTP handlers) to improve maintainability.
+4. Add lightweight architecture boundaries (e.g., `ai_dev/core`, `ai_dev/services`, `ai_dev/templates`) and update imports accordingly.

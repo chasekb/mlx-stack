@@ -670,6 +670,10 @@ TOOL_SCHEMAS = {
     },
 }
 
+PATCH_DENY_PREFIXES = (
+    ".git/",
+)
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -1046,6 +1050,83 @@ def ensure_under_root(path: Path) -> bool:
         return False
 
 
+def normalize_patch_path(path_text: str) -> Optional[str]:
+    rel = str(path_text or "").strip().strip('"').strip("'")
+    if not rel or rel == "/dev/null":
+        return None
+    rel = rel.replace("\\", "/")
+    if rel.startswith("a/") or rel.startswith("b/"):
+        rel = rel[2:]
+    while rel.startswith("./"):
+        rel = rel[2:]
+    if not rel:
+        return None
+    return rel
+
+
+def extract_patch_paths(patch_text: str) -> list[str]:
+    seen: dict[str, bool] = {}
+    lines = patch_text.splitlines()
+
+    for line in lines:
+        rel = None
+        if line.startswith("diff --git "):
+            m = re.match(r"^diff --git a/(.+?) b/(.+?)$", line)
+            if m:
+                rel = normalize_patch_path(m.group(2))
+        elif line.startswith("+++ "):
+            rel = normalize_patch_path(line[4:])
+        elif line.startswith("*** Add File:") or line.startswith("*** Update File:") or line.startswith("*** Delete File:"):
+            m = re.match(r"^\*\*\* (?:Add|Update|Delete) File: (.+?)(?:\s+->.+)?$", line)
+            if m:
+                rel = normalize_patch_path(m.group(1))
+
+        if rel:
+            seen[rel] = True
+
+    return sorted(seen.keys())
+
+
+def path_allowed_for_patch(rel_path: str) -> bool:
+    if not rel_path:
+        return False
+    p = Path(rel_path)
+    if p.is_absolute() or ".." in p.parts:
+        return False
+    normalized = rel_path.replace("\\", "/")
+    for deny_prefix in PATCH_DENY_PREFIXES:
+        if normalized.startswith(deny_prefix):
+            return False
+    target = (ROOT / p).resolve()
+    return ensure_under_root(target)
+
+
+def snapshot_paths(rel_paths: list[str]) -> dict:
+    snapshot = {}
+    for rel in rel_paths:
+        target = (ROOT / rel).resolve()
+        if target.exists() and target.is_dir():
+            raise ValueError(f"target_is_directory:{rel}")
+        if target.exists() and target.is_file():
+            snapshot[rel] = {"exists": True, "content": target.read_text(encoding="utf-8", errors="ignore")}
+        else:
+            snapshot[rel] = {"exists": False, "content": ""}
+    return snapshot
+
+
+def restore_snapshot(snapshot: dict) -> None:
+    for rel, prior in snapshot.items():
+        target = (ROOT / rel).resolve()
+        if not ensure_under_root(target):
+            continue
+        if bool(prior.get("exists", False)):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(str(prior.get("content", "")), encoding="utf-8")
+        else:
+            if target.exists() and target.is_file():
+                target.unlink()
+
+
 def tool_search_code(args: dict) -> dict:
     regex = str(args.get("regex", "")).strip()
     if not regex:
@@ -1090,7 +1171,72 @@ def tool_run_tests(args: dict, dry_run: bool) -> dict:
 def tool_write_patch(args: dict, dry_run: bool) -> dict:
     if dry_run:
         return {"ok": False, "error": "blocked_in_dry_run"}
-    return {"ok": False, "error": "not_implemented"}
+
+    patch = str(args.get("patch", "") or "")
+    if not patch.strip():
+        return {"ok": False, "error": "missing_patch"}
+    if len(patch) > 500_000:
+        return {"ok": False, "error": "patch_too_large", "max_chars": 500000}
+
+    rel_paths = extract_patch_paths(patch)
+    if not rel_paths:
+        return {"ok": False, "error": "no_target_files_detected"}
+
+    denied = [p for p in rel_paths if not path_allowed_for_patch(p)]
+    if denied:
+        return {"ok": False, "error": "patch_target_denied", "denied_paths": denied}
+
+    try:
+        before_state = snapshot_paths(rel_paths)
+    except ValueError as exc:
+        return {"ok": False, "error": "invalid_patch_target", "detail": str(exc)}
+
+    preflight = subprocess.run(
+        ["git", "apply", "--check", "--whitespace=nowarn", "-"],
+        cwd=ROOT,
+        input=patch,
+        text=True,
+        capture_output=True,
+    )
+    if preflight.returncode != 0:
+        return {
+            "ok": False,
+            "error": "preflight_failed",
+            "stderr": (preflight.stderr or "").strip(),
+            "stdout": (preflight.stdout or "").strip(),
+        }
+
+    apply_proc = subprocess.run(
+        ["git", "apply", "--whitespace=nowarn", "-"],
+        cwd=ROOT,
+        input=patch,
+        text=True,
+        capture_output=True,
+    )
+    if apply_proc.returncode != 0:
+        return {
+            "ok": False,
+            "error": "apply_failed",
+            "stderr": (apply_proc.stderr or "").strip(),
+            "stdout": (apply_proc.stdout or "").strip(),
+        }
+
+    failed_verification = []
+    for rel in rel_paths:
+        target = (ROOT / rel).resolve()
+        if not ensure_under_root(target):
+            failed_verification.append(rel)
+
+    if failed_verification:
+        restore_snapshot(before_state)
+        return {
+            "ok": False,
+            "error": "post_apply_verification_failed",
+            "invalid_paths": failed_verification,
+            "rolled_back": True,
+        }
+
+    return {"ok": True, "applied_files": rel_paths, "file_count": len(rel_paths)}
 
 
 def tool_commit_changes(args: dict, dry_run: bool) -> dict:
@@ -1312,7 +1458,8 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     server = HTTPServer(('0.0.0.0', 8091), Handler)
     print('Agent service listening on :8091')
-    server.serve_forever()"""
+    server.serve_forever()
+"""
 
 
 DEFAULT_CONFIG = {
