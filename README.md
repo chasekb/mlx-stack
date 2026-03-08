@@ -398,6 +398,49 @@ Local KV state is stored in:
 
 - `.ai-dev/kv_cache.json`
 
+### 16) Observability events and alert thresholds (D residual hardening)
+
+Recent hardening adds structured event logs and configurable alerts across core services.
+
+Structured event logs:
+
+- Agent service events:
+  - path: `.ai-dev/events/agent.jsonl`
+  - examples: `run_started`, `run_completed`, `alerts_emitted`
+- Embedding queue events:
+  - path: `.ai-dev/events/embed-queue.jsonl`
+  - examples: `job_enqueued`, `job_claimed`, `job_failed`, `job_completed`, `alerts_emitted`
+- Embedding worker events:
+  - path: `.ai-dev/events/embed-worker.jsonl`
+  - examples: `job_processing_started`, `job_processing_completed`, `job_processing_failed`, `job_marked_done`, `qdrant_upsert_succeeded`, `qdrant_upsert_failed`
+
+Alert thresholds (environment variables):
+
+- Agent (`GET /metrics`):
+  - `AGENT_ALERT_TOOL_ERRORS` (default `5`)
+  - `AGENT_ALERT_CACHE_HIT_RATE_MIN` (default `0.2`)
+- Embedding queue (`GET /stats`):
+  - `EMBED_QUEUE_ALERT_DEAD_LETTER` (default `5`)
+
+When thresholds are crossed, API responses include:
+
+- `alerts`: active warning entries
+- `alert_thresholds`: currently applied threshold values
+
+Example:
+
+```bash
+AGENT_ALERT_TOOL_ERRORS=3 AGENT_ALERT_CACHE_HIT_RATE_MIN=0.25 python3 agent/server.py
+EMBED_QUEUE_ALERT_DEAD_LETTER=2 python3 embedding_queue/server.py
+```
+
+Then inspect:
+
+```bash
+curl "http://localhost:8091/metrics"
+curl "http://localhost:8093/stats"
+```
+
 ## Notes
 
 - This is a developer-friendly starter orchestration layer, intentionally lightweight.

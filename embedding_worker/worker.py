@@ -14,6 +14,19 @@ from pathlib import Path
 
 
 EMBEDDING_SCHEMA_VERSION = 2
+EVENT_LOG_PATH = Path('.ai-dev/events/embed-worker.jsonl')
+
+
+def emit_event(event_type: str, **fields: object) -> None:
+    EVENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    rec = {
+        'ts': time.time(),
+        'service': 'embed-worker',
+        'event': event_type,
+        **fields,
+    }
+    with EVENT_LOG_PATH.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(rec) + '\n')
 
 
 def http_json(method: str, url: str, payload: dict | None = None, timeout: float = 10.0) -> dict:
@@ -216,6 +229,7 @@ def process_job(
     allow_schema_migrate: bool,
     force_fake_embed: bool,
 ) -> None:
+    emit_event('job_processing_started', job_id=int(job.get('id', 0) or 0), kind=str(job.get('kind', 'unknown')))
     payload = job.get('payload', {}) if isinstance(job.get('payload', {}), dict) else {}
     source_text = _extract_source_text(payload)
 
@@ -258,8 +272,10 @@ def process_job(
                 timeout=timeout,
             )
             qdrant_status = {'enabled': True, 'upserted': True}
+            emit_event('qdrant_upsert_succeeded', job_id=int(job.get('id', 0) or 0), collection=qdrant_collection)
         except Exception as e:
             qdrant_status = {'enabled': True, 'upserted': False, 'error': str(e)[:500]}
+            emit_event('qdrant_upsert_failed', job_id=int(job.get('id', 0) or 0), error=str(e)[:300])
 
     rec = {
         'embedded_at': datetime.now(timezone.utc).isoformat(),
@@ -282,6 +298,13 @@ def process_job(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open('a', encoding='utf-8') as f:
         f.write(json.dumps(rec) + '\n')
+    emit_event(
+        'job_processing_completed',
+        job_id=int(job.get('id', 0) or 0),
+        vector_backend=vector_backend,
+        vector_dim=len(vector),
+        qdrant_upserted=bool(qdrant_status.get('upserted', False)),
+    )
 
 
 def run_once(queue_url: str, output_path: Path, timeout: float) -> bool:
@@ -310,6 +333,7 @@ def run_once(queue_url: str, output_path: Path, timeout: float) -> bool:
             force_fake_embed=os.environ.get('FORCE_FAKE_EMBED', '0') in ('1', 'true', 'True'),
         )
     except Exception as e:
+        emit_event('job_processing_failed', job_id=job_id, error=str(e)[:300])
         http_json(
             'POST',
             queue_url.rstrip('/') + '/jobs/fail',
@@ -324,6 +348,7 @@ def run_once(queue_url: str, output_path: Path, timeout: float) -> bool:
         payload={'job_id': job_id},
         timeout=timeout,
     )
+    emit_event('job_marked_done', job_id=job_id)
     return True
 
 

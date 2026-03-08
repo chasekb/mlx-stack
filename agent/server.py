@@ -17,6 +17,7 @@ RUNS_DIR = ROOT / ".ai-dev" / "runs"
 CACHE_PATH = ROOT / ".ai-dev" / "prompt_cache.json"
 METRICS_PATH = ROOT / ".ai-dev" / "metrics.json"
 KV_CACHE_PATH = ROOT / ".ai-dev" / "kv_cache.json"
+EVENT_LOG_PATH = ROOT / ".ai-dev" / "events" / "agent.jsonl"
 DEFAULT_CACHE_TTL_SECONDS = 600
 DEFAULT_KV_MODEL_BUDGET_TOKENS = 8000
 DEFAULT_KV_ENTRY_MAX_TOKENS = 2048
@@ -64,6 +65,75 @@ TOOL_SCHEMAS = {
 PATCH_DENY_PREFIXES = (
     ".git/",
 )
+
+
+def emit_event(event_type: str, **fields: object) -> None:
+    EVENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    rec = {
+        "ts": time.time(),
+        "service": "agent",
+        "event": event_type,
+        **fields,
+    }
+    with EVENT_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+
+
+def parse_alert_thresholds() -> dict:
+    raw_errors = "5"
+    raw_hit_rate = "0.2"
+    try:
+        import os
+
+        raw_errors = os.environ.get("AGENT_ALERT_TOOL_ERRORS", "5")
+        raw_hit_rate = os.environ.get("AGENT_ALERT_CACHE_HIT_RATE_MIN", "0.2")
+    except Exception:
+        pass
+    try:
+        max_tool_errors = max(0, int(raw_errors))
+    except ValueError:
+        max_tool_errors = 5
+    try:
+        min_cache_hit_rate = max(0.0, min(1.0, float(raw_hit_rate)))
+    except ValueError:
+        min_cache_hit_rate = 0.2
+    return {
+        "max_tool_errors": max_tool_errors,
+        "min_cache_hit_rate": min_cache_hit_rate,
+    }
+
+
+def compute_alerts(metrics: dict, thresholds: dict) -> list[dict]:
+    alerts: list[dict] = []
+    tools = metrics.get("tools", {}) if isinstance(metrics.get("tools", {}), dict) else {}
+    total_errors = sum(int(v.get("errors", 0) or 0) for v in tools.values() if isinstance(v, dict))
+    max_tool_errors = int(thresholds.get("max_tool_errors", 5) or 5)
+    if total_errors >= max_tool_errors:
+        alerts.append(
+            {
+                "name": "tool_errors_threshold_exceeded",
+                "severity": "warning",
+                "value": total_errors,
+                "threshold": max_tool_errors,
+                "message": f"tool errors ({total_errors}) >= threshold ({max_tool_errors})",
+            }
+        )
+
+    cache = metrics.get("cache", {}) if isinstance(metrics.get("cache", {}), dict) else {}
+    requests = int(cache.get("requests", 0) or 0)
+    hit_rate = float(cache.get("hit_rate", 0.0) or 0.0)
+    min_cache_hit_rate = float(thresholds.get("min_cache_hit_rate", 0.2) or 0.2)
+    if requests >= 10 and hit_rate < min_cache_hit_rate:
+        alerts.append(
+            {
+                "name": "cache_hit_rate_below_minimum",
+                "severity": "warning",
+                "value": round(hit_rate, 4),
+                "threshold": round(min_cache_hit_rate, 4),
+                "message": f"cache hit_rate ({hit_rate:.4f}) < threshold ({min_cache_hit_rate:.4f})",
+            }
+        )
+    return alerts
 
 
 def utc_now_iso() -> str:
@@ -713,6 +783,7 @@ def run_agent_task(payload: dict) -> dict:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "steps": [],
     }
+    emit_event("run_started", run_id=run_id, dry_run=dry_run, max_steps=max_steps, task=task[:300])
 
     if not isinstance(plan, list) or not plan:
         trace["steps"].append({"tool": "noop", "result": {"ok": True, "detail": "No plan steps provided"}})
@@ -739,6 +810,7 @@ def run_agent_task(payload: dict) -> dict:
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     run_path = RUNS_DIR / f"{run_id}.json"
     run_path.write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
+    emit_event("run_completed", run_id=run_id, step_count=len(trace["steps"]), run_path=str(run_path.relative_to(ROOT)))
 
     return {
         "ok": True,
@@ -773,7 +845,20 @@ class Handler(BaseHTTPRequestHandler):
                     "used_tokens": int(store.get("used_tokens", 0)),
                     "budget_tokens": int(store.get("budget_tokens", DEFAULT_KV_MODEL_BUDGET_TOKENS)),
                 }
-            self._reply({'ok': True, 'service': 'agent', 'metrics': metrics, 'kv_cache': {'models': kv_summary}})
+            thresholds = parse_alert_thresholds()
+            alerts = compute_alerts(metrics, thresholds=thresholds)
+            if alerts:
+                emit_event('alerts_emitted', alerts=alerts)
+            self._reply(
+                {
+                    'ok': True,
+                    'service': 'agent',
+                    'metrics': metrics,
+                    'kv_cache': {'models': kv_summary},
+                    'alerts': alerts,
+                    'alert_thresholds': thresholds,
+                }
+            )
             return
 
         if parsed.path == '/tools':

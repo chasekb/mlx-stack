@@ -459,7 +459,7 @@ following items remain incomplete for production-grade behavior.
 2. Expand observability:
    - structured event traces across services
    - [x] richer metrics for cache/queue/retrieval/tool latencies
-   - optional alert thresholds.
+   - [x] optional alert thresholds.
 
 ### E) Template/runtime drift prevention
 
@@ -495,6 +495,35 @@ following items remain incomplete for production-grade behavior.
   - last error tracking for failed tools
   - per-step duration capture in run traces
 - Added `tests/test_agent_tool_metrics.py` to validate tool metrics aggregation and error accounting.
+
+#### D completion notes (observability + alerts residual slice)
+
+- Added structured event traces across core services:
+  - `agent/server.py` -> `.ai-dev/events/agent.jsonl`
+    - emits `run_started`, `run_completed`, and `alerts_emitted` events
+  - `embedding_queue/server.py` -> `.ai-dev/events/embed-queue.jsonl`
+    - emits queue lifecycle events (`job_enqueued`, `job_claimed`, `job_failed`, `job_completed`) and `alerts_emitted`
+  - `embedding_worker/worker.py` -> `.ai-dev/events/embed-worker.jsonl`
+    - emits worker lifecycle events (`job_processing_started`, `job_processing_completed`, `job_processing_failed`, `job_marked_done`) and Qdrant upsert outcomes.
+- Added configurable alert thresholds surfaced in service APIs:
+  - agent thresholds via env:
+    - `AGENT_ALERT_TOOL_ERRORS` (default `5`)
+    - `AGENT_ALERT_CACHE_HIT_RATE_MIN` (default `0.2`)
+  - embed queue threshold via env:
+    - `EMBED_QUEUE_ALERT_DEAD_LETTER` (default `5`)
+- Enriched endpoint payloads:
+  - `GET /metrics` (agent) now includes `alerts` and `alert_thresholds`
+  - `GET /stats` (embed-queue) now includes `alerts` and `alert_thresholds`.
+- Extended observability tests:
+  - `tests/test_agent_tool_metrics.py`
+    - alert-threshold parsing behavior
+    - alert computation behavior
+    - run lifecycle event emission
+  - `tests/test_embedding_queue.py`
+    - dead-letter threshold parsing and alert behavior
+    - queue lifecycle event emission
+  - `tests/test_embedding_worker.py`
+    - worker event emission for success, Qdrant failure, and processing failure paths.
 
 ### F) Codebase refactoring and modularization
 

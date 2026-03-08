@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -8,6 +9,43 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 DB_PATH = Path('.ai-dev/embedding_jobs.db')
+EVENT_LOG_PATH = Path('.ai-dev/events/embed-queue.jsonl')
+
+
+def emit_event(event_type: str, **fields: object) -> None:
+    EVENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    rec = {
+        'ts': time.time(),
+        'service': 'embed-queue',
+        'event': event_type,
+        **fields,
+    }
+    with EVENT_LOG_PATH.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(rec) + '\n')
+
+
+def parse_dead_letter_threshold() -> int:
+    raw = os.environ.get('EMBED_QUEUE_ALERT_DEAD_LETTER', '5')
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 5
+
+
+def compute_alerts(stats: dict, dead_letter_threshold: int) -> list[dict]:
+    alerts: list[dict] = []
+    dead_letter = int(stats.get('dead_letter', 0) or 0)
+    if dead_letter >= max(0, int(dead_letter_threshold)):
+        alerts.append(
+            {
+                'name': 'dead_letter_threshold_exceeded',
+                'severity': 'warning',
+                'value': dead_letter,
+                'threshold': int(dead_letter_threshold),
+                'message': f'dead_letter jobs ({dead_letter}) >= threshold ({dead_letter_threshold})',
+            }
+        )
+    return alerts
 
 
 def _db_connect() -> sqlite3.Connection:
@@ -50,7 +88,9 @@ def enqueue_job(kind: str, payload: dict, max_attempts: int = 3) -> dict:
             (kind, json.dumps(payload), max(1, int(max_attempts)), now, now),
         )
         conn.commit()
-        return {'job_id': int(cur.lastrowid), 'status': 'queued'}
+        out = {'job_id': int(cur.lastrowid), 'status': 'queued'}
+        emit_event('job_enqueued', job_id=out['job_id'], kind=kind, max_attempts=max_attempts)
+        return out
 
 
 def claim_next_job() -> dict | None:
@@ -83,13 +123,15 @@ def claim_next_job() -> dict | None:
         )
         conn.commit()
 
-        return {
+        out = {
             'id': int(row['id']),
             'kind': row['kind'],
             'payload': json.loads(row['payload_json']),
             'attempts': next_attempts,
             'max_attempts': int(row['max_attempts']),
         }
+        emit_event('job_claimed', job_id=out['id'], attempts=next_attempts, kind=out['kind'])
+        return out
 
 
 def complete_job(job_id: int) -> None:
@@ -100,6 +142,7 @@ def complete_job(job_id: int) -> None:
             (now, int(job_id)),
         )
         conn.commit()
+    emit_event('job_completed', job_id=int(job_id))
 
 
 def fail_job(job_id: int, error: str) -> dict:
@@ -130,7 +173,16 @@ def fail_job(job_id: int, error: str) -> dict:
             (status, next_attempt_at, str(error)[:2000], now, int(job_id)),
         )
         conn.commit()
-        return {'ok': True, 'status': status, 'next_attempt_at': next_attempt_at}
+        out = {'ok': True, 'status': status, 'next_attempt_at': next_attempt_at}
+        emit_event(
+            'job_failed',
+            job_id=int(job_id),
+            status=status,
+            attempts=attempts,
+            max_attempts=max_attempts,
+            error=str(error)[:300],
+        )
+        return out
 
 
 def get_stats() -> dict:
@@ -176,7 +228,20 @@ class Handler(BaseHTTPRequestHandler):
             self._reply({'ok': True, 'service': 'embed-queue', 'db_path': str(DB_PATH)})
             return
         if self.path == '/stats':
-            self._reply({'ok': True, 'service': 'embed-queue', 'stats': get_stats()})
+            stats = get_stats()
+            threshold = parse_dead_letter_threshold()
+            alerts = compute_alerts(stats, dead_letter_threshold=threshold)
+            if alerts:
+                emit_event('alerts_emitted', alerts=alerts)
+            self._reply(
+                {
+                    'ok': True,
+                    'service': 'embed-queue',
+                    'stats': stats,
+                    'alerts': alerts,
+                    'alert_thresholds': {'dead_letter': threshold},
+                }
+            )
             return
         self._reply({'error': 'not found'}, status=404)
 
