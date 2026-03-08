@@ -418,7 +418,7 @@ following items remain incomplete for production-grade behavior.
    - [x] agent tool execution paths (`write_patch` dry-run/deny/success paths).
 2. Expand observability:
    - structured event traces across services
-   - richer metrics for cache/queue/retrieval latencies
+   - [x] richer metrics for cache/queue/retrieval/tool latencies
    - optional alert thresholds.
 
 ### E) Template/runtime drift prevention
@@ -449,6 +449,12 @@ following items remain incomplete for production-grade behavior.
   - recency boost behavior for recent vs old commits
   - score breakdown shape in symbol scoring
   - JSON payload contract for `ai-dev memory explain`
+- Added tool-level observability in `agent/server.py`:
+  - per-tool call counts (`calls`, `ok`, `errors`)
+  - per-tool latency aggregates (`duration_ms_total`, `avg_duration_ms`)
+  - last error tracking for failed tools
+  - per-step duration capture in run traces
+- Added `tests/test_agent_tool_metrics.py` to validate tool metrics aggregation and error accounting.
 
 ### F) Codebase refactoring and modularization
 

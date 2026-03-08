@@ -220,6 +220,35 @@ def record_cache_metrics(hit: bool, compute_ms: float, namespace: str, key: str)
     save_json_file(METRICS_PATH, metrics)
 
 
+def record_tool_metrics(tool: str, ok: bool, duration_ms: float, error: str = "") -> None:
+    metrics = load_metrics()
+    tools = metrics.setdefault("tools", {})
+    row = tools.setdefault(
+        tool,
+        {
+            "calls": 0,
+            "ok": 0,
+            "errors": 0,
+            "duration_ms_total": 0.0,
+            "avg_duration_ms": 0.0,
+            "last_error": "",
+            "last_updated": utc_now_iso(),
+        },
+    )
+
+    row["calls"] = int(row.get("calls", 0)) + 1
+    row["ok"] = int(row.get("ok", 0)) + (1 if ok else 0)
+    row["errors"] = int(row.get("errors", 0)) + (0 if ok else 1)
+    row["duration_ms_total"] = round(float(row.get("duration_ms_total", 0.0)) + max(0.0, duration_ms), 4)
+    row["avg_duration_ms"] = round(row["duration_ms_total"] / max(1, row["calls"]), 4)
+    row["last_updated"] = utc_now_iso()
+    if not ok and error:
+        row["last_error"] = str(error)[:2000]
+
+    metrics["updated_at"] = utc_now_iso()
+    save_json_file(METRICS_PATH, metrics)
+
+
 def estimate_tokens(text: str) -> int:
     return max(1, len([t for t in re.split(r"\s+", (text or "").strip()) if t]))
 
@@ -687,12 +716,25 @@ def run_agent_task(payload: dict) -> dict:
 
     if not isinstance(plan, list) or not plan:
         trace["steps"].append({"tool": "noop", "result": {"ok": True, "detail": "No plan steps provided"}})
+        record_tool_metrics(tool="noop", ok=True, duration_ms=0.0)
     else:
         for step in plan[:max_steps]:
             tool = str(step.get("tool", "")).strip()
             args = step.get("args", {}) if isinstance(step.get("args", {}), dict) else {}
+            t0 = time.perf_counter()
             result = execute_tool_call(tool, args, dry_run=dry_run)
-            trace["steps"].append({"tool": tool, "args": args, "result": result})
+            tool_duration_ms = (time.perf_counter() - t0) * 1000.0
+            ok = bool(result.get("ok", False)) if isinstance(result, dict) else False
+            error = str(result.get("error", "")) if isinstance(result, dict) else "unknown_error"
+            record_tool_metrics(tool=tool or "unknown", ok=ok, duration_ms=tool_duration_ms, error=error)
+            trace["steps"].append(
+                {
+                    "tool": tool,
+                    "args": args,
+                    "duration_ms": round(tool_duration_ms, 3),
+                    "result": result,
+                }
+            )
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     run_path = RUNS_DIR / f"{run_id}.json"
