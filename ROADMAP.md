@@ -412,7 +412,7 @@ following items remain incomplete for production-grade behavior.
 ### D) Quality, testing, and observability
 
 1. Add unit/integration tests for:
-   - [ ] retrieval scoring and explain output
+   - [x] retrieval scoring and explain output
    - [x] queue retry/dead-letter behavior
    - [x] KV cache prefix/budget/eviction edge cases
    - [x] agent tool execution paths (`write_patch` dry-run/deny/success paths).
@@ -445,6 +445,10 @@ following items remain incomplete for production-grade behavior.
   - retry transition
   - dead-letter transition on max attempts
   - completion path to `done`
+- Added `tests/test_retrieval_memory_explain.py` covering:
+  - recency boost behavior for recent vs old commits
+  - score breakdown shape in symbol scoring
+  - JSON payload contract for `ai-dev memory explain`
 
 ### F) Codebase refactoring and modularization
 
