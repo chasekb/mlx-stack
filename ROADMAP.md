@@ -405,9 +405,31 @@ following items remain incomplete for production-grade behavior.
 
 ### C) Embedding pipeline productionization
 
-1. Replace fake/hash embeddings with real local embedding model inference.
-2. Add robust Qdrant upsert/query integration path (beyond JSONL sink fallback).
-3. Add embedding schema/versioning + reindex migration tooling.
+1. [x] Replace fake/hash embeddings with real local embedding model inference.
+2. [x] Add robust Qdrant upsert/query integration path (beyond JSONL sink fallback).
+3. [x] Add embedding schema/versioning + reindex migration tooling.
+
+#### C completion notes (embedding productionization slice)
+
+- Upgraded `embedding_worker/worker.py` to support real embedding inference via HTTP (`/v1/embeddings`) with deterministic fallback behavior:
+  - primary path: local embedding endpoint (`--embed-url`, `--embed-model`)
+  - fallback path: hash-based deterministic vectors when embedding backend is unavailable
+  - explicit override for deterministic mode via `--force-fake-embed`.
+- Added robust Qdrant integration in worker runtime:
+  - optional collection ensure/create before upsert
+  - point upsert with job metadata payload
+  - non-fatal Qdrant failure handling that preserves JSONL sink continuity
+  - runtime controls via `--qdrant-url`, `--qdrant-collection`, `--disable-qdrant`.
+- Added embedding schema/versioning and migration controls:
+  - schema file: `.ai-dev/embedding_schema.json`
+  - migration log: `.ai-dev/embedding_migrations.jsonl`
+  - strict schema compatibility checks on model/dim/backend
+  - safe rotate-on-migrate path for legacy embeddings JSONL via `--allow-schema-migrate`.
+- Added productionization tests in `tests/test_embedding_worker.py` covering:
+  - HTTP embedding success path
+  - fallback + Qdrant failure non-fatal behavior
+  - schema mismatch failure without migration flag
+  - schema migration rotation behavior.
 
 ### D) Quality, testing, and observability
 

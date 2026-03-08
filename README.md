@@ -251,8 +251,10 @@ ai-dev spec-decode \
 This repo now includes a lightweight background embedding pipeline:
 
 - `embed-queue` service (`embedding_queue/server.py`) using SQLite-backed jobs
-- `embed-worker` service (`embedding_worker/worker.py`) that polls jobs and writes vectors to `.ai-dev/embeddings.jsonl`
+- `embed-worker` service (`embedding_worker/worker.py`) that polls jobs, requests real embeddings, and writes vectors to `.ai-dev/embeddings.jsonl`
 - retry + dead-letter behavior in the queue API
+- optional Qdrant upsert path with non-fatal fallback
+- embedding schema/version tracking and migration guardrails
 - CLI helpers:
   - `ai-dev embed-enqueue`
   - `ai-dev embed-stats`
@@ -280,6 +282,29 @@ Run worker once manually (optional local debug):
 ```bash
 python3 embedding_worker/worker.py --queue-url http://localhost:8093 --once
 ```
+
+Productionization options:
+
+```bash
+python3 embedding_worker/worker.py \
+  --queue-url http://localhost:8093 \
+  --embed-url http://localhost:4000/v1/embeddings \
+  --embed-model local-embed \
+  --qdrant-url http://localhost:6333 \
+  --qdrant-collection ai_dev_embeddings \
+  --allow-schema-migrate
+```
+
+Useful flags:
+
+- `--disable-qdrant` to run JSONL-only mode
+- `--force-fake-embed` to force deterministic fallback vectors (debug/safe mode)
+- `--schema-path` and `--migration-log-path` to customize schema/migration files
+
+Worker metadata files:
+
+- `.ai-dev/embedding_schema.json`
+- `.ai-dev/embedding_migrations.jsonl`
 
 ### 14) Git-aware code memory (Milestone 8)
 
