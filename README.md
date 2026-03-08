@@ -20,6 +20,7 @@ It provides an `ai-dev` CLI to:
 6. Show configured multi-model profiles (`models`)
 7. Resolve model routing by task tag (`route-model`)
 8. Retrieve repo-aware symbols/chunks for code generation (`retrieve`)
+9. Explain git-aware retrieval scoring for transparency (`memory explain`)
 
 ## Quick start
 
@@ -279,6 +280,35 @@ Run worker once manually (optional local debug):
 ```bash
 python3 embedding_worker/worker.py --queue-url http://localhost:8093 --once
 ```
+
+### 14) Git-aware code memory (Milestone 8)
+
+Retrieval now includes git-aware ranking signals in addition to lexical matching:
+
+- current branch match bias
+- recent commit recency bias
+- existing changed-file and path-prefix bias
+
+Run retrieval as usual:
+
+```bash
+ai-dev retrieve "agent retrieval cache"
+```
+
+Use transparent scoring output:
+
+```bash
+ai-dev memory explain "agent retrieval cache"
+ai-dev memory explain "agent retrieval cache" --json
+```
+
+The explain command returns per-result score components (`score_breakdown`) for:
+
+- lexical match
+- path prefix
+- changed file
+- branch match
+- recency
 
 ## Notes
 

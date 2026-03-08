@@ -1513,6 +1513,53 @@ def get_git_changed_files(root: Path) -> set[str]:
     return changed
 
 
+def get_git_branch_name(root: Path) -> str:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return "unknown"
+    return (proc.stdout or "").strip() or "unknown"
+
+
+def get_file_git_metadata(root: Path, rel_path: str, branch_name: str) -> dict:
+    proc = subprocess.run(
+        ["git", "log", "-1", "--format=%H|%ct", "--", rel_path],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return {
+            "git_branch": branch_name,
+            "git_commit_sha": "",
+            "git_commit_ts": 0,
+        }
+
+    out = (proc.stdout or "").strip()
+    if "|" not in out:
+        return {
+            "git_branch": branch_name,
+            "git_commit_sha": "",
+            "git_commit_ts": 0,
+        }
+
+    sha, ts = out.split("|", 1)
+    try:
+        ts_int = int(ts)
+    except ValueError:
+        ts_int = 0
+
+    return {
+        "git_branch": branch_name,
+        "git_commit_sha": sha,
+        "git_commit_ts": ts_int,
+    }
+
+
 def load_index_state(expected_root: Path) -> dict:
     if not INDEX_STATE_PATH.exists():
         return {}
@@ -1564,12 +1611,19 @@ def install_index_git_hooks() -> None:
         write_file(hook_path, content, executable=True)
 
 
-def _index_single_file(file_path: Path, root: Path, top_terms_per_file: int, chunk_lines: int) -> tuple[dict, list[dict], list[dict]]:
+def _index_single_file(
+    file_path: Path,
+    root: Path,
+    top_terms_per_file: int,
+    chunk_lines: int,
+    git_branch: str,
+) -> tuple[dict, list[dict], list[dict]]:
     rel = str(file_path.relative_to(root))
     content = file_path.read_text(encoding="utf-8", errors="ignore")
     tok_counter = Counter(tokenize(content))
     symbols = extract_symbols(file_path, content)
     chunks = build_chunks(content, lines_per_chunk=chunk_lines)
+    git_meta = get_file_git_metadata(root=root, rel_path=rel, branch_name=git_branch)
 
     file_entry = {
         "path": rel,
@@ -1578,14 +1632,16 @@ def _index_single_file(file_path: Path, root: Path, top_terms_per_file: int, chu
         "symbol_count": len(symbols),
         "chunk_count": len(chunks),
         "top_terms": dict(tok_counter.most_common(top_terms_per_file)),
+        **git_meta,
     }
 
-    symbol_rows = [{"path": rel, **s} for s in symbols]
-    chunk_rows = [{"path": rel, **c} for c in chunks]
+    symbol_rows = [{"path": rel, **git_meta, **s} for s in symbols]
+    chunk_rows = [{"path": rel, **git_meta, **c} for c in chunks]
     return file_entry, symbol_rows, chunk_rows
 
 
 def run_index_pass(root: Path, args: argparse.Namespace, incremental: bool) -> tuple[dict, dict]:
+    git_branch = get_git_branch_name(root)
     current_files = collect_source_files(root, max_bytes=args.max_file_size)
     current_meta = {
         rel: {"size": p.stat().st_size, "mtime_ns": p.stat().st_mtime_ns}
@@ -1660,6 +1716,7 @@ def run_index_pass(root: Path, args: argparse.Namespace, incremental: bool) -> t
                 root,
                 top_terms_per_file=args.top_terms_per_file,
                 chunk_lines=args.chunk_lines,
+                git_branch=git_branch,
             )
 
         file_entries.append(file_entry)
@@ -1679,6 +1736,7 @@ def run_index_pass(root: Path, args: argparse.Namespace, incremental: bool) -> t
         "chunks": all_chunks,
         "files": file_entries,
         "index_mode": "incremental" if incremental else "full",
+        "git_branch": git_branch,
     }
 
     stats = {
@@ -1749,6 +1807,102 @@ def _configure_index_mode_args(p_index: argparse.ArgumentParser) -> None:
     return 0
 
 
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _recency_boost_from_commit_ts(commit_ts: int, now_ts: float) -> float:
+    if commit_ts <= 0:
+        return 0.0
+    age_days = max(0.0, (now_ts - float(commit_ts)) / 86_400.0)
+    return max(0.0, round(1.5 * (2.0 / (2.0 + age_days)), 4))
+
+
+def _score_symbol_match(
+    symbol: dict,
+    query_terms: set[str],
+    path_prefix: str,
+    changed_files: set[str],
+    current_branch: str,
+    include_changed_bias: bool,
+    now_ts: float,
+) -> dict | None:
+    p = str(symbol.get("path", ""))
+    name = str(symbol.get("name", ""))
+
+    lexical_score = 0.0
+    name_terms = set(tokenize(name))
+    lexical_score += len(query_terms.intersection(name_terms)) * 3.0
+    lexical_score += 1.0 if any(t in name.lower() for t in query_terms) else 0.0
+
+    path_score = 1.5 if path_prefix and p.startswith(path_prefix) else 0.0
+    changed_score = 1.0 if include_changed_bias and p in changed_files else 0.0
+
+    branch = str(symbol.get("git_branch", "") or "")
+    branch_score = 0.8 if current_branch != "unknown" and branch == current_branch else 0.0
+
+    recency_raw = _recency_boost_from_commit_ts(_safe_int(symbol.get("git_commit_ts", 0), 0), now_ts)
+    recency_score = round(recency_raw * 0.6, 4)
+
+    total = lexical_score + path_score + changed_score + branch_score + recency_score
+    if total <= 0:
+        return None
+
+    return {
+        "score": round(total, 4),
+        "score_breakdown": {
+            "lexical": round(lexical_score, 4),
+            "path_prefix": round(path_score, 4),
+            "changed_file": round(changed_score, 4),
+            "branch_match": round(branch_score, 4),
+            "recency": round(recency_score, 4),
+            "recency_raw": round(recency_raw, 4),
+        },
+    }
+
+
+def _score_chunk_match(
+    chunk: dict,
+    query_terms: set[str],
+    path_prefix: str,
+    changed_files: set[str],
+    current_branch: str,
+    include_changed_bias: bool,
+    now_ts: float,
+) -> dict | None:
+    p = str(chunk.get("path", ""))
+    chunk_terms = set(chunk.get("terms", []))
+
+    lexical_score = float(len(query_terms.intersection(chunk_terms)))
+    path_score = 2.0 if path_prefix and p.startswith(path_prefix) else 0.0
+    changed_score = 1.5 if include_changed_bias and p in changed_files else 0.0
+
+    branch = str(chunk.get("git_branch", "") or "")
+    branch_score = 0.9 if current_branch != "unknown" and branch == current_branch else 0.0
+
+    recency_raw = _recency_boost_from_commit_ts(_safe_int(chunk.get("git_commit_ts", 0), 0), now_ts)
+    recency_score = round(recency_raw * 0.8, 4)
+
+    total = lexical_score + path_score + changed_score + branch_score + recency_score
+    if total <= 0:
+        return None
+
+    return {
+        "score": round(total, 4),
+        "score_breakdown": {
+            "lexical": round(lexical_score, 4),
+            "path_prefix": round(path_score, 4),
+            "changed_file": round(changed_score, 4),
+            "branch_match": round(branch_score, 4),
+            "recency": round(recency_score, 4),
+            "recency_raw": round(recency_raw, 4),
+        },
+    }
+
+
 def command_retrieve(args: argparse.Namespace) -> int:
     if not INDEX_PATH.exists():
         print("Missing .ai-dev/index.json. Run `ai-dev index .` first.", file=sys.stderr)
@@ -1761,42 +1915,48 @@ def command_retrieve(args: argparse.Namespace) -> int:
         return 2
 
     root = Path(index_obj.get("root", "."))
+    current_branch = get_git_branch_name(root)
+    now_ts = time.time()
     changed_files = get_git_changed_files(root) if not args.no_changed_bias else set()
     path_prefix = args.path_prefix or ""
 
     symbol_results = []
     for s in index_obj.get("symbols", []):
-        score = 0.0
-        name_terms = set(tokenize(s.get("name", "")))
-        score += len(query_terms.intersection(name_terms)) * 3
-        score += 1 if any(t in s.get("name", "").lower() for t in query_terms) else 0
-        p = s.get("path", "")
-        if path_prefix and p.startswith(path_prefix):
-            score += 1.5
-        if p in changed_files:
-            score += 1.0
-        if score > 0:
-            symbol_results.append({"score": score, **s})
+        scored = _score_symbol_match(
+            symbol=s,
+            query_terms=query_terms,
+            path_prefix=path_prefix,
+            changed_files=changed_files,
+            current_branch=current_branch,
+            include_changed_bias=not args.no_changed_bias,
+            now_ts=now_ts,
+        )
+        if scored:
+            symbol_results.append({**scored, **s})
 
     chunk_results = []
     for c in index_obj.get("chunks", []):
-        score = 0.0
-        chunk_terms = set(c.get("terms", []))
-        score += len(query_terms.intersection(chunk_terms))
-        p = c.get("path", "")
-        if path_prefix and p.startswith(path_prefix):
-            score += 2.0
-        if p in changed_files:
-            score += 1.5
-        if score > 0:
+        scored = _score_chunk_match(
+            chunk=c,
+            query_terms=query_terms,
+            path_prefix=path_prefix,
+            changed_files=changed_files,
+            current_branch=current_branch,
+            include_changed_bias=not args.no_changed_bias,
+            now_ts=now_ts,
+        )
+        if scored:
             chunk_results.append(
                 {
-                    "score": score,
-                    "path": p,
+                    **scored,
+                    "path": c.get("path", ""),
                     "chunk_id": c.get("chunk_id"),
                     "start_line": c.get("start_line"),
                     "end_line": c.get("end_line"),
                     "text_preview": c.get("text_preview", ""),
+                    "git_branch": c.get("git_branch", ""),
+                    "git_commit_sha": c.get("git_commit_sha", ""),
+                    "git_commit_ts": _safe_int(c.get("git_commit_ts", 0), 0),
                 }
             )
 
@@ -1805,6 +1965,7 @@ def command_retrieve(args: argparse.Namespace) -> int:
 
     result = {
         "query": args.query,
+        "current_branch": current_branch,
         "top_symbols": symbol_results[: args.top_k],
         "top_chunks": chunk_results[: args.top_k],
     }
@@ -1821,6 +1982,137 @@ def command_retrieve(args: argparse.Namespace) -> int:
             print(f"- {c['path']}:{c['start_line']}-{c['end_line']} (score={c['score']:.2f})")
             preview = c.get("text_preview", "").replace("\n", " ")[:140]
             print(f"  {preview}")
+    return 0
+
+
+def command_memory_explain(args: argparse.Namespace) -> int:
+    if not INDEX_PATH.exists():
+        print("Missing .ai-dev/index.json. Run `ai-dev index .` first.", file=sys.stderr)
+        return 2
+
+    index_obj = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+    query_terms = set(tokenize(args.query))
+    if not query_terms:
+        print("Query is empty after tokenization.", file=sys.stderr)
+        return 2
+
+    root = Path(index_obj.get("root", "."))
+    current_branch = get_git_branch_name(root)
+    now_ts = time.time()
+    changed_files = get_git_changed_files(root) if not args.no_changed_bias else set()
+    path_prefix = args.path_prefix or ""
+
+    symbol_results = []
+    for s in index_obj.get("symbols", []):
+        scored = _score_symbol_match(
+            symbol=s,
+            query_terms=query_terms,
+            path_prefix=path_prefix,
+            changed_files=changed_files,
+            current_branch=current_branch,
+            include_changed_bias=not args.no_changed_bias,
+            now_ts=now_ts,
+        )
+        if scored:
+            symbol_results.append(
+                {
+                    **scored,
+                    "path": s.get("path", ""),
+                    "line": s.get("line"),
+                    "kind": s.get("kind", "symbol"),
+                    "name": s.get("name", ""),
+                    "git_branch": s.get("git_branch", ""),
+                    "git_commit_sha": s.get("git_commit_sha", ""),
+                    "git_commit_ts": _safe_int(s.get("git_commit_ts", 0), 0),
+                }
+            )
+
+    chunk_results = []
+    for c in index_obj.get("chunks", []):
+        scored = _score_chunk_match(
+            chunk=c,
+            query_terms=query_terms,
+            path_prefix=path_prefix,
+            changed_files=changed_files,
+            current_branch=current_branch,
+            include_changed_bias=not args.no_changed_bias,
+            now_ts=now_ts,
+        )
+        if scored:
+            chunk_results.append(
+                {
+                    **scored,
+                    "path": c.get("path", ""),
+                    "chunk_id": c.get("chunk_id"),
+                    "start_line": c.get("start_line"),
+                    "end_line": c.get("end_line"),
+                    "text_preview": c.get("text_preview", ""),
+                    "git_branch": c.get("git_branch", ""),
+                    "git_commit_sha": c.get("git_commit_sha", ""),
+                    "git_commit_ts": _safe_int(c.get("git_commit_ts", 0), 0),
+                }
+            )
+
+    symbol_results.sort(key=lambda x: x["score"], reverse=True)
+    chunk_results.sort(key=lambda x: x["score"], reverse=True)
+
+    payload = {
+        "query": args.query,
+        "current_branch": current_branch,
+        "path_prefix": path_prefix,
+        "changed_file_bias_enabled": not args.no_changed_bias,
+        "changed_files_count": len(changed_files),
+        "weights": {
+            "symbol": {
+                "lexical_match": "+3.0 each name token intersection +1.0 substring",
+                "path_prefix": "+1.5",
+                "changed_file": "+1.0",
+                "branch_match": "+0.8",
+                "recency": "recency_raw * 0.6",
+            },
+            "chunk": {
+                "lexical_match": "+1.0 each chunk term intersection",
+                "path_prefix": "+2.0",
+                "changed_file": "+1.5",
+                "branch_match": "+0.9",
+                "recency": "recency_raw * 0.8",
+            },
+            "recency_raw": "1.5 * (2 / (2 + age_days))",
+        },
+        "top_symbols": symbol_results[: args.top_k],
+        "top_chunks": chunk_results[: args.top_k],
+    }
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    print(f"Query: {args.query}")
+    print(f"Current branch: {current_branch}")
+    print(f"Changed file bias: {'enabled' if not args.no_changed_bias else 'disabled'}")
+    print("\nTop symbols (with scoring breakdown):")
+    for s in payload["top_symbols"]:
+        br = s.get("score_breakdown", {})
+        print(
+            f"- {s['path']}:{s.get('line', '?')} {s.get('kind', 'symbol')} {s.get('name', '')} "
+            f"score={s['score']:.2f} "
+            f"[lex={br.get('lexical', 0):.2f}, prefix={br.get('path_prefix', 0):.2f}, "
+            f"changed={br.get('changed_file', 0):.2f}, branch={br.get('branch_match', 0):.2f}, "
+            f"recency={br.get('recency', 0):.2f}]"
+        )
+
+    print("\nTop chunks (with scoring breakdown):")
+    for c in payload["top_chunks"]:
+        br = c.get("score_breakdown", {})
+        preview = c.get("text_preview", "").replace("\n", " ")[:140]
+        print(
+            f"- {c['path']}:{c.get('start_line', '?')}-{c.get('end_line', '?')} "
+            f"score={c['score']:.2f} "
+            f"[lex={br.get('lexical', 0):.2f}, prefix={br.get('path_prefix', 0):.2f}, "
+            f"changed={br.get('changed_file', 0):.2f}, branch={br.get('branch_match', 0):.2f}, "
+            f"recency={br.get('recency', 0):.2f}]"
+        )
+        print(f"  {preview}")
     return 0
 
 
@@ -2125,6 +2417,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_embed_stats.add_argument("--timeout", type=float, default=10.0)
     p_embed_stats.add_argument("--json", action="store_true")
     p_embed_stats.set_defaults(func=command_embed_stats)
+
+    p_memory = sub.add_parser("memory", help="Git-aware memory utilities")
+    memory_sub = p_memory.add_subparsers(dest="memory_command", required=True)
+
+    p_memory_explain = memory_sub.add_parser("explain", help="Explain retrieval scoring for a query")
+    p_memory_explain.add_argument("query", help="Search query")
+    p_memory_explain.add_argument("--top-k", type=int, default=5)
+    p_memory_explain.add_argument("--path-prefix", default=None, help="Prefer paths with this prefix")
+    p_memory_explain.add_argument("--no-changed-bias", action="store_true", help="Disable bias toward changed git files")
+    p_memory_explain.add_argument("--json", action="store_true")
+    p_memory_explain.set_defaults(func=command_memory_explain)
 
     return parser
 

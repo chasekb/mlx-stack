@@ -22,7 +22,7 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - [x] 5) Prompt caching
 - [x] 6) Speculative decoding
 - [x] 7) Background embedding workers
-- [ ] 8) Git-aware code memory
+- [x] 8) Git-aware code memory
 - [ ] 9) Shared KV cache
 
 ---
@@ -298,6 +298,20 @@ Make retrieval branch/commit aware.
 
 ## Done when
 - Retrieval reflects the active branch and recent development history.
+
+### Completion notes
+
+- Extended indexing metadata in `ai_dev/cli.py` to attach git attributes per file/symbol/chunk:
+  - `git_branch`
+  - `git_commit_sha`
+  - `git_commit_ts`
+- Enhanced `ai-dev retrieve` scoring with branch/recency-aware ranking signals:
+  - current-branch match bias
+  - recent-commit recency bias
+  - existing changed-file and path-prefix bias retained
+- Added transparent explanation command:
+  - `ai-dev memory explain <query>`
+  - includes per-result `score_breakdown` for lexical, path, changed-file, branch, and recency components.
 
 ---
 
