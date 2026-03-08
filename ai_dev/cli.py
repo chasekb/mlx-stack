@@ -7,6 +7,8 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,6 +71,17 @@ services:
     command: ["python", "server.py"]
     ports:
       - "8091:8091"
+    profiles: ["optional"]
+
+  spec-router:
+    image: python:3.11-slim
+    container_name: ai-dev-spec-router
+    working_dir: /app
+    volumes:
+      - ./spec_router:/app
+    command: ["python", "server.py"]
+    ports:
+      - "8092:8092"
     profiles: ["optional"]
 """
 
@@ -134,6 +147,86 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     server = HTTPServer(('0.0.0.0', 8090), Handler)
     print('RAG service listening on :8090')
+    server.serve_forever()
+"""
+
+
+SPEC_ROUTER_SERVER = """import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+def run_speculative_loop(draft_tokens: list[str], target_tokens: list[str]) -> dict:
+    accepted = 0
+    compared = min(len(draft_tokens), len(target_tokens))
+    out_tokens: list[str] = []
+
+    for i in range(compared):
+        d = draft_tokens[i]
+        t = target_tokens[i]
+        if d == t:
+            accepted += 1
+            out_tokens.append(d)
+        else:
+            out_tokens.append(t)
+
+    if len(target_tokens) > compared:
+        out_tokens.extend(target_tokens[compared:])
+
+    acceptance_rate = (accepted / compared) if compared else 0.0
+    return {
+        "accepted_tokens": accepted,
+        "compared_tokens": compared,
+        "acceptance_rate": round(acceptance_rate, 4),
+        "output_tokens": out_tokens,
+    }
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _reply(self, payload: dict, status: int = 200) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+    def do_GET(self):
+        if self.path == "/health":
+            self._reply({"ok": True, "service": "spec-router"})
+            return
+        self._reply({"error": "not found"}, status=404)
+
+    def do_POST(self):
+        if self.path != "/spec/decode":
+            self._reply({"error": "not found"}, status=404)
+            return
+
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = 0
+        body = self.rfile.read(max(0, content_length))
+
+        try:
+            payload = json.loads(body.decode("utf-8") if body else "{}")
+        except Exception:
+            self._reply({"error": "invalid_json"}, status=400)
+            return
+
+        draft_tokens = payload.get("draft_tokens", [])
+        target_tokens = payload.get("target_tokens", [])
+        if not isinstance(draft_tokens, list) or not isinstance(target_tokens, list):
+            self._reply({"error": "invalid_tokens", "detail": "draft_tokens and target_tokens must be arrays"}, status=400)
+            return
+
+        result = run_speculative_loop(
+            draft_tokens=[str(t) for t in draft_tokens],
+            target_tokens=[str(t) for t in target_tokens],
+        )
+        self._reply({"ok": True, "service": "spec-router", "result": result})
+
+
+if __name__ == "__main__":
+    server = HTTPServer(("0.0.0.0", 8092), Handler)
+    print("Spec router listening on :8092")
     server.serve_forever()
 """
 
@@ -676,6 +769,7 @@ DEFAULT_CONFIG = {
     "stack": {
         "mlx_port": 8081,
         "litellm_port": 4000,
+        "spec_router_port": 8092,
         "default_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
     },
     "models": [
@@ -819,6 +913,7 @@ def command_init(_: argparse.Namespace) -> int:
     write_file(Path("mlx/Dockerfile"), MLX_DOCKERFILE)
     write_file(Path("rag/server.py"), RAG_SERVER)
     write_file(Path("agent/server.py"), AGENT_SERVER)
+    write_file(Path("spec_router/server.py"), SPEC_ROUTER_SERVER)
 
     write_file(CONFIG_PATH, json.dumps(config, indent=2) + "\n")
 
@@ -1421,6 +1516,65 @@ def command_models(args: argparse.Namespace) -> int:
     return 0
 
 
+def _tokenize_for_spec(text: str) -> list[str]:
+    normalized = (text or "").replace("\n", " ").strip()
+    return [t for t in normalized.split(" ") if t]
+
+
+def command_spec_decode(args: argparse.Namespace) -> int:
+    draft_tokens: list[str]
+    target_tokens: list[str]
+
+    if args.draft_tokens:
+        draft_tokens = [t for t in args.draft_tokens if t]
+    else:
+        draft_tokens = _tokenize_for_spec(args.draft_text)
+
+    if args.target_tokens:
+        target_tokens = [t for t in args.target_tokens if t]
+    else:
+        target_tokens = _tokenize_for_spec(args.target_text)
+
+    payload = {
+        "draft_tokens": draft_tokens,
+        "target_tokens": target_tokens,
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        args.url.rstrip("/") + "/spec/decode",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+            body = resp.read().decode("utf-8")
+    except urllib.error.URLError as e:
+        print(f"spec-decode request failed: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        print("spec-decode returned invalid JSON", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(parsed, indent=2))
+        return 0
+
+    result = parsed.get("result", {}) if isinstance(parsed, dict) else {}
+    print(f"accepted_tokens: {result.get('accepted_tokens', 0)}")
+    print(f"compared_tokens: {result.get('compared_tokens', 0)}")
+    print(f"acceptance_rate: {result.get('acceptance_rate', 0.0)}")
+    print("output_tokens:")
+    for tok in result.get("output_tokens", []):
+        print(f"- {tok}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ai-dev", description="Local AI dev stack orchestration CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1489,6 +1643,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_route.add_argument("task_tag", choices=sorted(TASK_TAG_ALIASES.keys()))
     p_route.add_argument("--json", action="store_true")
     p_route.set_defaults(func=command_route_model)
+
+    p_spec = sub.add_parser("spec-decode", help="Run speculative decode loop via local spec-router")
+    p_spec.add_argument("--url", default="http://localhost:8092", help="Spec-router base URL")
+    p_spec.add_argument("--timeout", type=float, default=10.0)
+    p_spec.add_argument("--draft-text", default="", help="Draft model text to tokenize on spaces")
+    p_spec.add_argument("--target-text", default="", help="Target model text to tokenize on spaces")
+    p_spec.add_argument("--draft-tokens", nargs="*", default=None, help="Explicit draft tokens")
+    p_spec.add_argument("--target-tokens", nargs="*", default=None, help="Explicit target tokens")
+    p_spec.add_argument("--json", action="store_true")
+    p_spec.set_defaults(func=command_spec_decode)
 
     return parser
 

@@ -20,7 +20,7 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - [x] 3) Function-calling agents
 - [x] 4) Automatic repo indexing
 - [x] 5) Prompt caching
-- [ ] 6) Speculative decoding
+- [x] 6) Speculative decoding
 - [ ] 7) Background embedding workers
 - [ ] 8) Git-aware code memory
 - [ ] 9) Shared KV cache
@@ -223,6 +223,23 @@ Use draft model + target model for faster generation.
 
 ## Done when
 - Median generation latency drops while quality remains comparable.
+
+### Completion notes
+
+- Added `spec-router` service scaffold for speculative decoding loop:
+  - new service source: `spec_router/server.py`
+  - endpoints:
+    - `GET /health`
+    - `POST /spec/decode`
+- Added optional compose service in generated `podman-compose.yml` via `ai-dev init`:
+  - service name: `spec-router`
+  - port: `8092`
+  - volume: `./spec_router:/app`
+- Added CLI helper command:
+  - `ai-dev spec-decode --draft-tokens ... --target-tokens ...`
+  - supports JSON output and text tokenization fallback from `--draft-text` / `--target-text`.
+- Added stack schema support for spec-router port:
+  - `stack.spec_router_port` in default config.
 
 ---
 

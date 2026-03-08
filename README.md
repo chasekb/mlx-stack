@@ -209,6 +209,42 @@ Local cache/metrics files are written under `.ai-dev/`:
 - `.ai-dev/prompt_cache.json`
 - `.ai-dev/metrics.json`
 
+### 12) Speculative decode foundation (Milestone 6)
+
+This repo now includes a local `spec-router` service (optional profile) that can run
+a draft-vs-target token acceptance loop via HTTP.
+
+Start optional services (includes `spec-router`):
+
+```bash
+ai-dev up --with-optional
+```
+
+Health check:
+
+```bash
+curl "http://localhost:8092/health"
+```
+
+Direct decode call:
+
+```bash
+curl -X POST "http://localhost:8092/spec/decode" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "draft_tokens": ["def", "hello", "("],
+    "target_tokens": ["def", "hello", "(name)"]
+  }'
+```
+
+CLI helper:
+
+```bash
+ai-dev spec-decode \
+  --draft-tokens def hello "(" \
+  --target-tokens def hello "(name)"
+```
+
 ## Notes
 
 - This is a developer-friendly starter orchestration layer, intentionally lightweight.
