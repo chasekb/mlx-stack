@@ -245,6 +245,41 @@ ai-dev spec-decode \
   --target-tokens def hello "(name)"
 ```
 
+### 13) Background embedding workers (Milestone 7)
+
+This repo now includes a lightweight background embedding pipeline:
+
+- `embed-queue` service (`embedding_queue/server.py`) using SQLite-backed jobs
+- `embed-worker` service (`embedding_worker/worker.py`) that polls jobs and writes vectors to `.ai-dev/embeddings.jsonl`
+- retry + dead-letter behavior in the queue API
+- CLI helpers:
+  - `ai-dev embed-enqueue`
+  - `ai-dev embed-stats`
+
+Start optional services:
+
+```bash
+ai-dev up --with-optional
+```
+
+Enqueue a job:
+
+```bash
+ai-dev embed-enqueue --path ai_dev/cli.py --kind file_change --text "def main parser"
+```
+
+Check queue stats:
+
+```bash
+ai-dev embed-stats
+```
+
+Run worker once manually (optional local debug):
+
+```bash
+python3 embedding_worker/worker.py --queue-url http://localhost:8093 --once
+```
+
 ## Notes
 
 - This is a developer-friendly starter orchestration layer, intentionally lightweight.

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
@@ -82,6 +83,29 @@ services:
     command: ["python", "server.py"]
     ports:
       - "8092:8092"
+    profiles: ["optional"]
+
+  embed-queue:
+    image: python:3.11-slim
+    container_name: ai-dev-embed-queue
+    working_dir: /app
+    volumes:
+      - ./embedding_queue:/app
+    command: ["python", "server.py"]
+    ports:
+      - "8093:8093"
+    profiles: ["optional"]
+
+  embed-worker:
+    image: python:3.11-slim
+    container_name: ai-dev-embed-worker
+    working_dir: /app
+    volumes:
+      - ./embedding_worker:/app
+      - ./embedding_queue:/queue
+    command: ["python", "worker.py", "--queue-url", "http://embed-queue:8093"]
+    depends_on:
+      - embed-queue
     profiles: ["optional"]
 """
 
@@ -228,6 +252,358 @@ if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8092), Handler)
     print("Spec router listening on :8092")
     server.serve_forever()
+"""
+
+
+EMBED_QUEUE_SERVER = """from __future__ import annotations
+
+import json
+import sqlite3
+import time
+from pathlib import Path
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+DB_PATH = Path('.ai-dev/embedding_jobs.db')
+
+
+def _db_connect() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_db() -> None:
+    with _db_connect() as conn:
+        conn.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS embedding_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                status TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 3,
+                next_attempt_at REAL NOT NULL DEFAULT 0,
+                last_error TEXT,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            '''
+        )
+        conn.commit()
+
+
+def enqueue_job(kind: str, payload: dict, max_attempts: int = 3) -> dict:
+    now = time.time()
+    with _db_connect() as conn:
+        cur = conn.execute(
+            '''
+            INSERT INTO embedding_jobs (
+                kind, payload_json, status, attempts, max_attempts, next_attempt_at, created_at, updated_at
+            ) VALUES (?, ?, 'queued', 0, ?, 0, ?, ?)
+            ''',
+            (kind, json.dumps(payload), max(1, int(max_attempts)), now, now),
+        )
+        conn.commit()
+        return {'job_id': int(cur.lastrowid), 'status': 'queued'}
+
+
+def claim_next_job() -> dict | None:
+    now = time.time()
+    with _db_connect() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute(
+            '''
+            SELECT * FROM embedding_jobs
+            WHERE status IN ('queued', 'retry')
+              AND next_attempt_at <= ?
+            ORDER BY id ASC
+            LIMIT 1
+            ''',
+            (now,),
+        ).fetchone()
+
+        if row is None:
+            conn.commit()
+            return None
+
+        next_attempts = int(row['attempts']) + 1
+        conn.execute(
+            '''
+            UPDATE embedding_jobs
+            SET status='in_progress', attempts=?, updated_at=?
+            WHERE id=?
+            ''',
+            (next_attempts, now, int(row['id'])),
+        )
+        conn.commit()
+
+        return {
+            'id': int(row['id']),
+            'kind': row['kind'],
+            'payload': json.loads(row['payload_json']),
+            'attempts': next_attempts,
+            'max_attempts': int(row['max_attempts']),
+        }
+
+
+def complete_job(job_id: int) -> None:
+    now = time.time()
+    with _db_connect() as conn:
+        conn.execute(
+            "UPDATE embedding_jobs SET status='done', updated_at=? WHERE id=?",
+            (now, int(job_id)),
+        )
+        conn.commit()
+
+
+def fail_job(job_id: int, error: str) -> dict:
+    now = time.time()
+    with _db_connect() as conn:
+        row = conn.execute(
+            'SELECT attempts, max_attempts FROM embedding_jobs WHERE id=?',
+            (int(job_id),),
+        ).fetchone()
+        if row is None:
+            return {'error': 'job_not_found'}
+
+        attempts = int(row['attempts'])
+        max_attempts = int(row['max_attempts'])
+        if attempts >= max_attempts:
+            status = 'dead_letter'
+            next_attempt_at = 0
+        else:
+            status = 'retry'
+            next_attempt_at = now + min(60.0, float(2 ** attempts))
+
+        conn.execute(
+            '''
+            UPDATE embedding_jobs
+            SET status=?, next_attempt_at=?, last_error=?, updated_at=?
+            WHERE id=?
+            ''',
+            (status, next_attempt_at, str(error)[:2000], now, int(job_id)),
+        )
+        conn.commit()
+        return {'ok': True, 'status': status, 'next_attempt_at': next_attempt_at}
+
+
+def get_stats() -> dict:
+    with _db_connect() as conn:
+        counts = {
+            row['status']: int(row['count'])
+            for row in conn.execute(
+                'SELECT status, COUNT(*) AS count FROM embedding_jobs GROUP BY status'
+            ).fetchall()
+        }
+    return {
+        'queued': counts.get('queued', 0),
+        'retry': counts.get('retry', 0),
+        'in_progress': counts.get('in_progress', 0),
+        'done': counts.get('done', 0),
+        'dead_letter': counts.get('dead_letter', 0),
+    }
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _reply(self, payload: dict, status: int = 200) -> None:
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode('utf-8'))
+
+    def _read_json(self) -> dict:
+        try:
+            n = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            n = 0
+        body = self.rfile.read(max(0, n))
+        if not body:
+            return {}
+        try:
+            parsed = json.loads(body.decode('utf-8'))
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    def do_GET(self):
+        if self.path == '/health':
+            self._reply({'ok': True, 'service': 'embed-queue', 'db_path': str(DB_PATH)})
+            return
+        if self.path == '/stats':
+            self._reply({'ok': True, 'service': 'embed-queue', 'stats': get_stats()})
+            return
+        self._reply({'error': 'not found'}, status=404)
+
+    def do_POST(self):
+        if self.path == '/jobs/enqueue':
+            payload = self._read_json()
+            kind = str(payload.get('kind', 'file_change') or 'file_change')
+            job_payload = payload.get('payload', {}) if isinstance(payload.get('payload', {}), dict) else {}
+            max_attempts = int(payload.get('max_attempts', 3) or 3)
+            out = enqueue_job(kind=kind, payload=job_payload, max_attempts=max_attempts)
+            self._reply({'ok': True, 'service': 'embed-queue', **out})
+            return
+
+        if self.path == '/jobs/claim':
+            job = claim_next_job()
+            self._reply({'ok': True, 'service': 'embed-queue', 'job': job})
+            return
+
+        if self.path == '/jobs/complete':
+            payload = self._read_json()
+            job_id = int(payload.get('job_id', 0) or 0)
+            if job_id <= 0:
+                self._reply({'error': 'missing_job_id'}, status=400)
+                return
+            complete_job(job_id)
+            self._reply({'ok': True, 'service': 'embed-queue', 'job_id': job_id, 'status': 'done'})
+            return
+
+        if self.path == '/jobs/fail':
+            payload = self._read_json()
+            job_id = int(payload.get('job_id', 0) or 0)
+            if job_id <= 0:
+                self._reply({'error': 'missing_job_id'}, status=400)
+                return
+            error = str(payload.get('error', 'unknown_error'))
+            out = fail_job(job_id=job_id, error=error)
+            if out.get('error'):
+                self._reply(out, status=404)
+                return
+            self._reply({'ok': True, 'service': 'embed-queue', 'job_id': job_id, **out})
+            return
+
+        self._reply({'error': 'not found'}, status=404)
+
+
+if __name__ == '__main__':
+    _init_db()
+    server = HTTPServer(('0.0.0.0', 8093), Handler)
+    print('Embedding queue listening on :8093')
+    server.serve_forever()
+"""
+
+
+EMBED_WORKER = """from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def http_json(method: str, url: str, payload: dict | None = None, timeout: float = 10.0) -> dict:
+    data = json.dumps(payload or {}).encode('utf-8') if payload is not None else None
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={'Content-Type': 'application/json'},
+        method=method,
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode('utf-8')
+    return json.loads(raw) if raw else {}
+
+
+def fake_embed(text: str, dims: int = 16) -> list[float]:
+    digest = hashlib.sha256((text or '').encode('utf-8')).digest()
+    vals = [((digest[i % len(digest)] / 255.0) * 2.0 - 1.0) for i in range(dims)]
+    norm = math.sqrt(sum(v * v for v in vals)) or 1.0
+    return [round(v / norm, 6) for v in vals]
+
+
+def process_job(job: dict, output_path: Path) -> None:
+    payload = job.get('payload', {}) if isinstance(job.get('payload', {}), dict) else {}
+    source_text = str(payload.get('text', '') or '')
+    if not source_text:
+        source_text = str(payload.get('path', '') or '')
+    if not source_text:
+        source_text = json.dumps(payload, sort_keys=True)
+
+    rec = {
+        'embedded_at': datetime.now(timezone.utc).isoformat(),
+        'job_id': int(job.get('id', 0) or 0),
+        'kind': str(job.get('kind', 'unknown')),
+        'metadata': payload,
+        'vector': fake_embed(source_text),
+    }
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open('a', encoding='utf-8') as f:
+        f.write(json.dumps(rec) + '\\n')
+
+
+def run_once(queue_url: str, output_path: Path, timeout: float) -> bool:
+    claim = http_json('POST', queue_url.rstrip('/') + '/jobs/claim', payload={}, timeout=timeout)
+    job = claim.get('job') if isinstance(claim, dict) else None
+    if not isinstance(job, dict):
+        return False
+
+    job_id = int(job.get('id', 0) or 0)
+    if job_id <= 0:
+        return False
+
+    try:
+        process_job(job=job, output_path=output_path)
+    except Exception as e:
+        http_json(
+            'POST',
+            queue_url.rstrip('/') + '/jobs/fail',
+            payload={'job_id': job_id, 'error': str(e)},
+            timeout=timeout,
+        )
+        return True
+
+    http_json(
+        'POST',
+        queue_url.rstrip('/') + '/jobs/complete',
+        payload={'job_id': job_id},
+        timeout=timeout,
+    )
+    return True
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Background embedding worker')
+    p.add_argument('--queue-url', default='http://localhost:8093')
+    p.add_argument('--output-path', default='.ai-dev/embeddings.jsonl')
+    p.add_argument('--poll-interval', type=float, default=2.0)
+    p.add_argument('--timeout', type=float, default=10.0)
+    p.add_argument('--once', action='store_true', help='Process at most one available job and exit')
+    args = p.parse_args()
+
+    output_path = Path(args.output_path)
+
+    if args.once:
+        try:
+            run_once(queue_url=args.queue_url, output_path=output_path, timeout=args.timeout)
+            return 0
+        except urllib.error.URLError as e:
+            print(f'worker failed to reach queue: {e}')
+            return 2
+
+    print(f'Embedding worker polling {args.queue_url} every {args.poll_interval}s')
+    while True:
+        try:
+            processed = run_once(queue_url=args.queue_url, output_path=output_path, timeout=args.timeout)
+        except urllib.error.URLError as e:
+            print(f'worker queue error: {e}')
+            processed = False
+
+        if not processed:
+            time.sleep(max(0.25, args.poll_interval))
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
 """
 
 
@@ -770,6 +1146,7 @@ DEFAULT_CONFIG = {
         "mlx_port": 8081,
         "litellm_port": 4000,
         "spec_router_port": 8092,
+        "embed_queue_port": 8093,
         "default_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
     },
     "models": [
@@ -867,9 +1244,15 @@ def ensure_config_schema(cfg: dict) -> dict:
 
     if "stack" not in cfg or not isinstance(cfg["stack"], dict):
         cfg["stack"] = copy.deepcopy(DEFAULT_CONFIG["stack"])
+    else:
+        for k, v in DEFAULT_CONFIG["stack"].items():
+            cfg["stack"].setdefault(k, v)
 
     if "routing" not in cfg or not isinstance(cfg["routing"], dict):
         cfg["routing"] = copy.deepcopy(DEFAULT_CONFIG["routing"])
+    else:
+        for k, v in DEFAULT_CONFIG["routing"].items():
+            cfg["routing"].setdefault(k, v)
 
     for m in cfg.get("models", []):
         if not m.get("output_path"):
@@ -914,6 +1297,8 @@ def command_init(_: argparse.Namespace) -> int:
     write_file(Path("rag/server.py"), RAG_SERVER)
     write_file(Path("agent/server.py"), AGENT_SERVER)
     write_file(Path("spec_router/server.py"), SPEC_ROUTER_SERVER)
+    write_file(Path("embedding_queue/server.py"), EMBED_QUEUE_SERVER)
+    write_file(Path("embedding_worker/worker.py"), EMBED_WORKER)
 
     write_file(CONFIG_PATH, json.dumps(config, indent=2) + "\n")
 
@@ -1575,6 +1960,76 @@ def command_spec_decode(args: argparse.Namespace) -> int:
     return 0
 
 
+def _http_json(method: str, url: str, payload: dict | None = None, timeout: float = 10.0) -> dict:
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method=method,
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8")
+    return json.loads(raw) if raw else {}
+
+
+def command_embed_enqueue(args: argparse.Namespace) -> int:
+    metadata = {}
+    if args.metadata_json:
+        try:
+            parsed = json.loads(args.metadata_json)
+            metadata = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            print("Invalid --metadata-json payload", file=sys.stderr)
+            return 2
+
+    payload = {
+        "kind": args.kind,
+        "payload": {
+            "path": args.path,
+            "text": args.text,
+            "metadata": metadata,
+            "enqueued_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "max_attempts": args.max_attempts,
+    }
+
+    try:
+        out = _http_json(
+            "POST",
+            args.url.rstrip("/") + "/jobs/enqueue",
+            payload=payload,
+            timeout=args.timeout,
+        )
+    except urllib.error.URLError as e:
+        print(f"embed-enqueue request failed: {e}", file=sys.stderr)
+        return 2
+
+    print(json.dumps(out, indent=2) if args.json else f"Enqueued job_id={out.get('job_id')} status={out.get('status')}")
+    return 0
+
+
+def command_embed_stats(args: argparse.Namespace) -> int:
+    try:
+        out = _http_json("GET", args.url.rstrip("/") + "/stats", timeout=args.timeout)
+    except urllib.error.URLError as e:
+        print(f"embed-stats request failed: {e}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(out, indent=2))
+        return 0
+
+    stats = out.get("stats", {}) if isinstance(out, dict) else {}
+    print("Embedding queue stats:")
+    print(f"- queued: {stats.get('queued', 0)}")
+    print(f"- retry: {stats.get('retry', 0)}")
+    print(f"- in_progress: {stats.get('in_progress', 0)}")
+    print(f"- done: {stats.get('done', 0)}")
+    print(f"- dead_letter: {stats.get('dead_letter', 0)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ai-dev", description="Local AI dev stack orchestration CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1653,6 +2108,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_spec.add_argument("--target-tokens", nargs="*", default=None, help="Explicit target tokens")
     p_spec.add_argument("--json", action="store_true")
     p_spec.set_defaults(func=command_spec_decode)
+
+    p_embed_enqueue = sub.add_parser("embed-enqueue", help="Enqueue an embedding job for background worker")
+    p_embed_enqueue.add_argument("--url", default="http://localhost:8093", help="Embed queue base URL")
+    p_embed_enqueue.add_argument("--timeout", type=float, default=10.0)
+    p_embed_enqueue.add_argument("--kind", default="file_change", help="Job kind")
+    p_embed_enqueue.add_argument("--path", default="", help="File path associated with the event")
+    p_embed_enqueue.add_argument("--text", default="", help="Optional text payload to embed")
+    p_embed_enqueue.add_argument("--metadata-json", default="", help="Optional JSON object string")
+    p_embed_enqueue.add_argument("--max-attempts", type=int, default=3)
+    p_embed_enqueue.add_argument("--json", action="store_true")
+    p_embed_enqueue.set_defaults(func=command_embed_enqueue)
+
+    p_embed_stats = sub.add_parser("embed-stats", help="Show embed queue job stats")
+    p_embed_stats.add_argument("--url", default="http://localhost:8093", help="Embed queue base URL")
+    p_embed_stats.add_argument("--timeout", type=float, default=10.0)
+    p_embed_stats.add_argument("--json", action="store_true")
+    p_embed_stats.set_defaults(func=command_embed_stats)
 
     return parser
 

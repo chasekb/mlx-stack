@@ -18,6 +18,8 @@ models/
 .ai-dev/index_state.json
 .ai-dev/prompt_cache.json
 .ai-dev/metrics.json
+.ai-dev/embedding_jobs.db
+.ai-dev/embeddings.jsonl
 
 # Bytecode / caches
 __pycache__/

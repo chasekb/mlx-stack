@@ -21,7 +21,7 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - [x] 4) Automatic repo indexing
 - [x] 5) Prompt caching
 - [x] 6) Speculative decoding
-- [ ] 7) Background embedding workers
+- [x] 7) Background embedding workers
 - [ ] 8) Git-aware code memory
 - [ ] 9) Shared KV cache
 
@@ -257,6 +257,29 @@ Continuously embed chunks/events without blocking inference.
 
 ## Done when
 - Embeddings are updated asynchronously and reliably.
+
+### Completion notes
+
+- Added a lightweight SQLite-backed embedding queue service:
+  - source: `embedding_queue/server.py`
+  - endpoints:
+    - `GET /health`
+    - `GET /stats`
+    - `POST /jobs/enqueue`
+    - `POST /jobs/claim`
+    - `POST /jobs/complete`
+    - `POST /jobs/fail`
+- Added background worker service scaffold:
+  - source: `embedding_worker/worker.py`
+  - polls queue, processes jobs, writes vectors to `.ai-dev/embeddings.jsonl`
+  - includes retry/dead-letter cooperation with queue API.
+- Integrated both services into stack generation and runtime compose wiring:
+  - `ai_dev/cli.py` now generates `embed-queue` and `embed-worker` services in `podman-compose.yml`
+  - `command_init()` now writes `embedding_queue/server.py` and `embedding_worker/worker.py`
+  - added stack schema key: `stack.embed_queue_port`.
+- Added CLI helpers for queue operations:
+  - `ai-dev embed-enqueue`
+  - `ai-dev embed-stats`.
 
 ---
 
