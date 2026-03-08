@@ -413,8 +413,8 @@ following items remain incomplete for production-grade behavior.
 
 1. Add unit/integration tests for:
    - [ ] retrieval scoring and explain output
-   - [ ] queue retry/dead-letter behavior
-   - [ ] KV cache prefix/budget/eviction edge cases
+   - [x] queue retry/dead-letter behavior
+   - [x] KV cache prefix/budget/eviction edge cases
    - [x] agent tool execution paths (`write_patch` dry-run/deny/success paths).
 2. Expand observability:
    - structured event traces across services
@@ -433,6 +433,18 @@ following items remain incomplete for production-grade behavior.
   - embedded `AGENT_SERVER` template in `ai_dev/cli.py`
 - Integrated parity validation into CI (`.github/workflows/build.yml`).
 - Added `tests/test_agent_write_patch.py` and wired unit-test execution in CI.
+
+#### D completion notes (testing slice)
+
+- Added `tests/test_agent_kv_cache.py` covering KV-cache edge cases:
+  - missing-session bypass
+  - prefix-hash mismatch rejection
+  - miss->hit on prefix extension
+  - budget-triggered eviction behavior
+- Added `tests/test_embedding_queue.py` covering queue reliability paths:
+  - retry transition
+  - dead-letter transition on max attempts
+  - completion path to `done`
 
 ### F) Codebase refactoring and modularization
 
