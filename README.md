@@ -310,6 +310,54 @@ The explain command returns per-result score components (`score_breakdown`) for:
 - branch match
 - recency
 
+### 15) Shared KV cache (Milestone 9)
+
+The agent service now includes a lightweight shared KV-cache simulation for
+session-aware prefix reuse across related requests.
+
+Key capabilities:
+
+- tenant/session/model isolation
+- prefix-boundary validation (reuse only when new prefix extends prior prefix)
+- prefix hash validation (`prefix_hash`)
+- per-model token budget with LRU-style eviction
+
+`POST /agent/run` now accepts optional `kv_cache` settings:
+
+```json
+{
+  "task": "Refine implementation",
+  "model": "local-mlx",
+  "dry_run": true,
+  "plan": [{"tool":"git_diff","args":{}}],
+  "kv_cache": {
+    "enabled": true,
+    "tenant_id": "acme",
+    "session_id": "sess-123",
+    "prompt_prefix": "Analyze current diff and suggest next edits",
+    "model_budget_tokens": 8000,
+    "entry_max_tokens": 2048
+  }
+}
+```
+
+Response includes a `kv_cache` block with status and reason:
+
+- `hit` (prefix extension reuse)
+- `miss` (cold start or boundary mismatch)
+- `bypass` (missing session/prefix)
+- `rejected` (hash mismatch)
+
+Metrics now include KV summaries:
+
+```bash
+curl "http://localhost:8091/metrics"
+```
+
+Local KV state is stored in:
+
+- `.ai-dev/kv_cache.json`
+
 ## Notes
 
 - This is a developer-friendly starter orchestration layer, intentionally lightweight.

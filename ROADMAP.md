@@ -23,7 +23,7 @@ This roadmap starts from your current working baseline (`ai-dev`, MLX container,
 - [x] 6) Speculative decoding
 - [x] 7) Background embedding workers
 - [x] 8) Git-aware code memory
-- [ ] 9) Shared KV cache
+- [x] 9) Shared KV cache
 
 ---
 
@@ -331,6 +331,22 @@ Reuse model KV states across related requests/sessions.
 
 ## Done when
 - Follow-up turns and repeated context windows are notably faster.
+
+### Completion notes
+
+- Added shared KV-cache state file in agent runtime:
+  - `.ai-dev/kv_cache.json`
+- Implemented session-aware KV reuse logic in `agent/server.py`:
+  - tenant/session/model scoped keys
+  - prefix hashing and prefix-boundary validation
+  - reuse status returned as `hit/miss/bypass/rejected` with reason metadata
+- Added per-model memory budget + LRU-style eviction safeguards:
+  - configurable per-request budget (`kv_cache.model_budget_tokens`)
+  - entry token estimation + cap (`kv_cache.entry_max_tokens`)
+  - oldest non-active entries evicted when over budget
+- Exposed KV observability:
+  - `POST /agent/run` now returns a `kv_cache` block
+  - `GET /metrics` now includes KV model usage summaries (entries/used/budget tokens).
 
 ---
 
