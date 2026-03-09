@@ -403,7 +403,7 @@ following items remain incomplete for production-grade behavior.
 1. Upgrade shared KV cache from orchestration metadata to actual model-backend KV reuse.
 2. Upgrade speculative decoding from token-list scaffold to real draft/target integration.
    - [x] live draft/target model-call decode path (prompt -> draft/target completion requests)
-   - [ ] streaming token acceptance loop across draft/target backends.
+   - [x] streaming token acceptance loop across draft/target backends.
 
 #### B completion notes (spec decode integration slice)
 
@@ -420,6 +420,24 @@ following items remain incomplete for production-grade behavior.
   - prompt mode model-call behavior
   - draft fallback path
   - input validation errors.
+
+#### B completion notes (streaming acceptance loop slice)
+
+- Extended `spec_router/server.py` with iterative speculative token acceptance mode for model-backed decoding:
+  - added `run_streaming_acceptance_loop(...)` that advances one token at a time
+  - compares draft vs target token per step and appends accepted/replaced target token output
+  - stops on target stream exhaustion or configured `max_tokens` budget.
+- Added richer runtime telemetry for streaming speculative loop:
+  - `loop_mode: stream_acceptance`
+  - per-step trace entries (`step`, `draft`, `target`, `accepted`)
+  - `rejected_tokens` count in addition to accepted/comparison metrics
+  - accumulated `draft_call_ms` / `target_call_ms` across token steps.
+- Preserved compatibility mode for prior non-stream prompt behavior:
+  - `stream_loop: false` uses existing full-completion comparison path.
+- Added/extended unit coverage in `tests/test_spec_router.py`:
+  - streaming acceptance path with mixed accept/reject decisions
+  - streaming path with draft failure fallback while target continues
+  - explicit non-stream compatibility mode validation.
 
 ### C) Embedding pipeline productionization
 

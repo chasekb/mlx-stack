@@ -261,6 +261,26 @@ ai-dev spec-decode \
 In prompt mode, `spec-router` calls both draft and target model endpoints, compares tokenized outputs,
 and reports acceptance stats plus per-call timing (`draft_call_ms`, `target_call_ms`).
 
+Streaming acceptance loop mode (default for prompt-based speculative decode):
+
+```bash
+ai-dev spec-decode \
+  --prompt "Write a Python function to add two numbers" \
+  --draft-model local-mlx-fast \
+  --target-model local-mlx \
+  --max-tokens 32
+```
+
+In streaming acceptance mode, `spec-router` performs iterative one-token draft/target calls and returns:
+
+- `loop_mode: "stream_acceptance"`
+- per-step acceptance trace in `steps`
+- `accepted_tokens`, `rejected_tokens`, `compared_tokens`
+- accumulated `draft_call_ms` and `target_call_ms`
+
+Compatibility mode remains available by setting `stream_loop: false` in the request body,
+which uses the previous full-completion compare behavior.
+
 ### 13) Background embedding workers (Milestone 7)
 
 This repo now includes a lightweight background embedding pipeline:
