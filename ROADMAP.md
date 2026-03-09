@@ -601,3 +601,14 @@ following items remain incomplete for production-grade behavior.
   - tool implementations (`search_code`, `read_file`, `git_diff`, `run_tests`, `write_patch`, `commit_changes`)
   - shared `execute_tool_call(...)` dispatcher.
 - Updated `agent/server.py` to delegate tooling wrappers and dispatch to `agent.tooling` while retaining existing wrapper function names for compatibility with current tests and call sites.
+
+#### F completion notes (agent runtime context extraction tranche)
+
+- Added `agent/runtime_context.py` to centralize runtime context and cache-key helpers:
+  - git branch detection
+  - index signature generation
+  - cache namespace construction
+  - task payload normalization
+  - deterministic cache key hashing.
+- Updated `agent/server.py` to delegate runtime context wrappers (`get_git_branch`, `get_index_signature`, `compute_cache_namespace`, `normalize_task_payload`, `compute_cache_key`) to `agent.runtime_context` while preserving existing wrapper names for compatibility with tests and call sites.
+- Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and validated template/runtime parity after extraction.

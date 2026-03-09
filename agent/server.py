@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from agent import cache_kv
+from agent import runtime_context
 from agent import tooling
 
 
@@ -150,49 +151,23 @@ def save_json_file(path: Path, payload: dict) -> None:
 
 
 def get_git_branch() -> str:
-    proc = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        return "unknown"
-    return (proc.stdout or "").strip() or "unknown"
+    return runtime_context.get_git_branch(root=ROOT)
 
 
 def get_index_signature() -> str:
-    if not INDEX_PATH.exists():
-        return "no-index"
-    try:
-        index_obj = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return "index-unreadable"
-    generated_at = str(index_obj.get("generated_at", "unknown"))
-    schema_version = str(index_obj.get("schema_version", "?"))
-    file_count = str(index_obj.get("file_count", "?"))
-    return f"sv{schema_version}:{generated_at}:{file_count}"
+    return runtime_context.get_index_signature(index_path=INDEX_PATH)
 
 
 def compute_cache_namespace() -> str:
-    return f"branch={get_git_branch()}|index={get_index_signature()}"
+    return runtime_context.compute_cache_namespace(root=ROOT, index_path=INDEX_PATH)
 
 
 def normalize_task_payload(payload: dict) -> dict:
-    return {
-        "task": str(payload.get("task", "")).strip(),
-        "model": payload.get("model"),
-        "dry_run": bool(payload.get("dry_run", True)),
-        "max_steps": int(payload.get("max_steps", 6)),
-        "plan": payload.get("plan", []),
-        "tool_context_hash": payload.get("tool_context_hash"),
-        "options": payload.get("options", {}),
-    }
+    return runtime_context.normalize_task_payload(payload)
 
 
 def compute_cache_key(payload: dict) -> str:
-    canonical = json.dumps(normalize_task_payload(payload), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return runtime_context.compute_cache_key(payload)
 
 
 def load_cache() -> dict:
