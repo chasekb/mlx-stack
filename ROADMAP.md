@@ -569,3 +569,11 @@ following items remain incomplete for production-grade behavior.
   - `ai_dev/core/retrieval.py`
 - Updated `ai_dev/cli.py` to delegate key indexing/retrieval helpers to the new core modules while preserving existing CLI behavior and command contracts.
 - Preserved backward compatibility for current tests by keeping existing helper function names in `ai_dev/cli.py` as thin wrappers around core implementations.
+
+#### F completion notes (git helper extraction tranche)
+
+- Added `ai_dev/core/git_ops.py` to centralize git-related helper functions used by CLI indexing/retrieval flows:
+  - changed-file detection
+  - branch-name resolution
+  - per-file git metadata lookup.
+- Updated `ai_dev/cli.py` to delegate git helper wrappers to `ai_dev.core.git_ops`, reducing duplicated process-shell logic in the CLI module while keeping command behavior unchanged.

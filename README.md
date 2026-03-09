@@ -473,6 +473,7 @@ Recent modularization progress extracted shared CLI internals into `ai_dev/core/
 
 - `ai_dev/core/indexing.py` (source-file iteration, symbol extraction, chunk building)
 - `ai_dev/core/retrieval.py` (tokenization, recency utilities, symbol/chunk scoring)
+- `ai_dev/core/git_ops.py` (git branch/changed-file/file-metadata helpers)
 
 `ai_dev/cli.py` now delegates to these modules for indexing/retrieval helper behavior,
 which keeps command behavior stable while reducing coupling in the main CLI module.
