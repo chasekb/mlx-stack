@@ -400,8 +400,10 @@ following items remain incomplete for production-grade behavior.
 
 ### B) Real inference-level acceleration (vs simulation)
 
-1. Upgrade shared KV cache from orchestration metadata to actual model-backend KV reuse.
-2. Upgrade speculative decoding from token-list scaffold to real draft/target integration.
+1. [ ] Upgrade shared KV cache from orchestration metadata to actual model-backend KV reuse.
+   - **Current status:** **NOT completed**. The current implementation in `agent/server.py` / `agent/cache_kv.py` is an orchestration-layer KV reuse simulation (prefix hashing, session scoping, budget/eviction metadata), not true backend model-state reuse.
+   - **Still required for production-grade completion:** integrate with inference backend primitives that persist/reuse real attention KV tensors/state across requests.
+2. [x] Upgrade speculative decoding from token-list scaffold to real draft/target integration.
    - [x] live draft/target model-call decode path (prompt -> draft/target completion requests)
    - [x] streaming token acceptance loop across draft/target backends.
 
