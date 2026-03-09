@@ -546,6 +546,18 @@ following items remain incomplete for production-grade behavior.
 ### F) Codebase refactoring and modularization
 
 1. Refactor `ai_dev/cli.py` into smaller modules (command groups + shared utilities) to reduce coupling and file size.
-2. Extract embedded service templates/constants from `ai_dev/cli.py` into dedicated template files or a template package.
+2. [x] Extract embedded service templates/constants from `ai_dev/cli.py` into dedicated template files or a template package.
 3. Split `agent/server.py` into focused modules (cache, kv-cache, tool execution, HTTP handlers) to improve maintainability.
 4. Add lightweight architecture boundaries (e.g., `ai_dev/core`, `ai_dev/services`, `ai_dev/templates`) and update imports accordingly.
+
+#### F completion notes (template extraction slice)
+
+- Extracted large embedded templates from `ai_dev/cli.py` into `ai_dev/templates/service_templates.py` with package re-exports in `ai_dev/templates/__init__.py`.
+- Updated CLI initialization flow to import template constants from `ai_dev.templates` while preserving generated runtime file content.
+- Upgraded `tools/check_template_parity.py` to validate parity across all extracted service templates:
+  - `agent/server.py`
+  - `rag/server.py`
+  - `spec_router/server.py`
+  - `embedding_queue/server.py`
+  - `embedding_worker/worker.py`
+- Updated packaging config in `pyproject.toml` to include subpackages (`ai_dev.*`), ensuring `ai_dev.templates` is distributed.

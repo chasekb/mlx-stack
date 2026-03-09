@@ -1,37 +1,41 @@
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
-CLI_PATH = ROOT / "ai_dev" / "cli.py"
-AGENT_PATH = ROOT / "agent" / "server.py"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
+from ai_dev.templates import AGENT_SERVER, EMBED_QUEUE_SERVER, EMBED_WORKER, RAG_SERVER, SPEC_ROUTER_SERVER
 
-def get_agent_template_from_cli(cli_source: str) -> str:
-    module = ast.parse(cli_source, filename=str(CLI_PATH))
-    for node in module.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "AGENT_SERVER":
-                    return ast.literal_eval(node.value)
-    raise RuntimeError("AGENT_SERVER assignment not found in ai_dev/cli.py")
+TEMPLATE_RUNTIME_PAIRS = {
+    "AGENT_SERVER": (AGENT_SERVER, ROOT / "agent" / "server.py"),
+    "RAG_SERVER": (RAG_SERVER, ROOT / "rag" / "server.py"),
+    "SPEC_ROUTER_SERVER": (SPEC_ROUTER_SERVER, ROOT / "spec_router" / "server.py"),
+    "EMBED_QUEUE_SERVER": (EMBED_QUEUE_SERVER, ROOT / "embedding_queue" / "server.py"),
+    "EMBED_WORKER": (EMBED_WORKER, ROOT / "embedding_worker" / "worker.py"),
+}
 
 
 def main() -> int:
-    cli_source = CLI_PATH.read_text(encoding="utf-8")
-    agent_source = AGENT_PATH.read_text(encoding="utf-8")
-    embedded = get_agent_template_from_cli(cli_source)
+    mismatches: list[str] = []
 
-    if embedded != agent_source:
-        print("Template/runtime drift detected for AGENT_SERVER.", file=sys.stderr)
-        print("- ai_dev/cli.py::AGENT_SERVER does not match agent/server.py", file=sys.stderr)
-        print("- Re-sync the embedded template before committing.", file=sys.stderr)
+    for template_name, (template_source, runtime_path) in TEMPLATE_RUNTIME_PAIRS.items():
+        runtime_source = runtime_path.read_text(encoding="utf-8")
+        if template_source != runtime_source:
+            mismatches.append(
+                f"- {template_name} template does not match {runtime_path.relative_to(ROOT)}"
+            )
+
+    if mismatches:
+        print("Template/runtime drift detected.", file=sys.stderr)
+        for msg in mismatches:
+            print(msg, file=sys.stderr)
+        print("Re-sync templates before committing.", file=sys.stderr)
         return 1
 
-    print("AGENT_SERVER template parity check passed.")
+    print("Template/runtime parity check passed for all service templates.")
     return 0
 
 

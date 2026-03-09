@@ -17,4 +17,6 @@ dependencies = []
 ai-dev = "ai_dev.cli:main"
 
 [tool.setuptools]
-packages = ["ai_dev"]
+
+[tool.setuptools.packages.find]
+include = ["ai_dev", "ai_dev.*"]
