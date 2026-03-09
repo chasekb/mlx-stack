@@ -514,6 +514,13 @@ Recent agent observability modularization progress extracted metrics/event helpe
 `agent/server.py` now delegates observability wrapper helpers to this module while preserving
 existing wrapper names used by tests and current runtime call paths.
 
+Recent agent task-runner modularization progress extracted plan-execution/run-trace orchestration into:
+
+- `agent/task_runner.py` (bounded step loop execution, step timing/result trace capture, run trace persistence, run lifecycle event emission)
+
+`agent/server.py` now delegates `run_agent_task(...)` orchestration to this module while preserving
+the existing wrapper signature and runtime response contract used by tests and current call paths.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

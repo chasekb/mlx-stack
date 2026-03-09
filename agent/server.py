@@ -12,6 +12,7 @@ from agent import cache_kv
 from agent import observability
 from agent import retrieval
 from agent import runtime_context
+from agent import task_runner
 from agent import tooling
 
 
@@ -246,58 +247,15 @@ def execute_tool_call(tool: str, args: dict, dry_run: bool) -> dict:
 
 
 def run_agent_task(payload: dict) -> dict:
-    task = str(payload.get("task", "")).strip()
-    dry_run = bool(payload.get("dry_run", True))
-    max_steps = int(payload.get("max_steps", 6))
-    max_steps = max(1, min(max_steps, 25))
-    plan = payload.get("plan", [])
-    run_id = uuid.uuid4().hex[:12]
-
-    trace = {
-        "run_id": run_id,
-        "task": task,
-        "dry_run": dry_run,
-        "max_steps": max_steps,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "steps": [],
-    }
-    emit_event("run_started", run_id=run_id, dry_run=dry_run, max_steps=max_steps, task=task[:300])
-
-    if not isinstance(plan, list) or not plan:
-        trace["steps"].append({"tool": "noop", "result": {"ok": True, "detail": "No plan steps provided"}})
-        record_tool_metrics(tool="noop", ok=True, duration_ms=0.0)
-    else:
-        for step in plan[:max_steps]:
-            tool = str(step.get("tool", "")).strip()
-            args = step.get("args", {}) if isinstance(step.get("args", {}), dict) else {}
-            t0 = time.perf_counter()
-            result = execute_tool_call(tool, args, dry_run=dry_run)
-            tool_duration_ms = (time.perf_counter() - t0) * 1000.0
-            ok = bool(result.get("ok", False)) if isinstance(result, dict) else False
-            error = str(result.get("error", "")) if isinstance(result, dict) else "unknown_error"
-            record_tool_metrics(tool=tool or "unknown", ok=ok, duration_ms=tool_duration_ms, error=error)
-            trace["steps"].append(
-                {
-                    "tool": tool,
-                    "args": args,
-                    "duration_ms": round(tool_duration_ms, 3),
-                    "result": result,
-                }
-            )
-
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    run_path = RUNS_DIR / f"{run_id}.json"
-    run_path.write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
-    emit_event("run_completed", run_id=run_id, step_count=len(trace["steps"]), run_path=str(run_path.relative_to(ROOT)))
-
-    return {
-        "ok": True,
-        "run_id": run_id,
-        "run_path": str(run_path.relative_to(ROOT)),
-        "step_count": len(trace["steps"]),
-        "dry_run": dry_run,
-        "steps": trace["steps"],
-    }
+    return task_runner.run_agent_task(
+        payload,
+        execute_tool_call_fn=execute_tool_call,
+        record_tool_metrics_fn=record_tool_metrics,
+        emit_event_fn=emit_event,
+        runs_dir=RUNS_DIR,
+        root=ROOT,
+        perf_counter_fn=time.perf_counter,
+    )
 
 
 class Handler(BaseHTTPRequestHandler):

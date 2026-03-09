@@ -630,3 +630,14 @@ following items remain incomplete for production-grade behavior.
   - metrics load/update helpers for cache and tool telemetry.
 - Updated `agent/server.py` to delegate observability wrappers (`emit_event`, `parse_alert_thresholds`, `compute_alerts`, `utc_now_iso`, `load_metrics`, `record_cache_metrics`, `record_tool_metrics`) to `agent.observability` while preserving wrapper names for compatibility with tests and existing runtime call sites.
 - Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.
+
+#### F completion notes (agent task runner extraction tranche)
+
+- Added `agent/task_runner.py` to centralize agent plan-execution/run-trace orchestration:
+  - run metadata initialization
+  - max-step bounded tool loop execution
+  - per-step duration/result trace capture
+  - run trace persistence under `.ai-dev/runs/`
+  - run lifecycle event emission (`run_started`, `run_completed`).
+- Updated `agent/server.py` to delegate `run_agent_task(...)` to `agent.task_runner` while preserving the same wrapper function signature and output contract used by existing tests and call sites.
+- Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.
