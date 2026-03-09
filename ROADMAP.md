@@ -383,6 +383,8 @@ following items remain incomplete for production-grade behavior.
 
 - [ ] **B.1 Real backend KV reuse**
   - orchestration-layer KV simulation exists, but true inference-backend attention KV state reuse is not implemented yet.
+- [ ] **E.1 Template/runtime duplication reduction completion**
+  - parity checks are in place, but duplication still exists between runtime service files and generated template sources (now primarily under `ai_dev/templates/service_templates.py`).
 - [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
   - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
 - [ ] **F.3/F.4 Architecture boundary completion**
