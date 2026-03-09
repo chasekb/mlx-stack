@@ -507,6 +507,13 @@ Recent agent retrieval modularization progress extracted retrieval scoring helpe
 `agent/server.py` now delegates retrieval wrapper helpers to this module while preserving
 existing wrapper names used by tests and current runtime call paths.
 
+Recent agent observability modularization progress extracted metrics/event helpers into:
+
+- `agent/observability.py` (event emission, alert-threshold parsing and alert computation, metrics load/update helpers)
+
+`agent/server.py` now delegates observability wrapper helpers to this module while preserving
+existing wrapper names used by tests and current runtime call paths.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

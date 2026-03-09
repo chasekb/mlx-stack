@@ -620,3 +620,13 @@ following items remain incomplete for production-grade behavior.
   - `retrieve(index_obj, query, top_k, path_prefix)`.
 - Updated `agent/server.py` to delegate retrieval wrapper functions (`tokenize`, `retrieve`) to `agent.retrieval` while preserving existing wrapper names and call signatures for compatibility with tests and tool-dispatch call paths.
 - Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.
+
+#### F completion notes (agent observability extraction tranche)
+
+- Added `agent/observability.py` to centralize agent metrics/events/alert helper logic:
+  - UTC timestamp helper
+  - event emission (`emit_event`)
+  - alert threshold parsing + alert computation
+  - metrics load/update helpers for cache and tool telemetry.
+- Updated `agent/server.py` to delegate observability wrappers (`emit_event`, `parse_alert_thresholds`, `compute_alerts`, `utc_now_iso`, `load_metrics`, `record_cache_metrics`, `record_tool_metrics`) to `agent.observability` while preserving wrapper names for compatibility with tests and existing runtime call sites.
+- Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.
