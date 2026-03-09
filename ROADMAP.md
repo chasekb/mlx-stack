@@ -379,6 +379,15 @@ Reuse model KV states across related requests/sessions.
 The milestone checkboxes above are complete at a **foundation** level, but the
 following items remain incomplete for production-grade behavior.
 
+### Current remaining gaps (explicit status)
+
+- [ ] **B.1 Real backend KV reuse**
+  - orchestration-layer KV simulation exists, but true inference-backend attention KV state reuse is not implemented yet.
+- [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
+  - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
+- [ ] **F.3/F.4 Architecture boundary completion**
+  - `agent/server.py` internals were split into focused modules, but HTTP-handler decomposition and broader service-layer boundary formalization remain to be fully completed.
+
 ### A) Agent mutation path hardening
 
 1. [x] Implement `write_patch` in agent tools (no longer `not_implemented`).
