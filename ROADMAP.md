@@ -577,3 +577,10 @@ following items remain incomplete for production-grade behavior.
   - branch-name resolution
   - per-file git metadata lookup.
 - Updated `ai_dev/cli.py` to delegate git helper wrappers to `ai_dev.core.git_ops`, reducing duplicated process-shell logic in the CLI module while keeping command behavior unchanged.
+
+#### F completion notes (index state extraction tranche)
+
+- Added `ai_dev/core/index_state.py` to centralize index state persistence helpers used by incremental indexing:
+  - `load_index_state(path, expected_root)`
+  - `save_index_state(path, root, file_meta)`
+- Updated `ai_dev/cli.py` to delegate index state wrapper functions to `ai_dev.core.index_state`, preserving command behavior while further reducing persistence-specific coupling in the CLI module.

@@ -17,6 +17,7 @@ from typing import Iterable
 
 from ai_dev.core import git_ops as core_git_ops
 from ai_dev.core import indexing as core_indexing
+from ai_dev.core import index_state as core_index_state
 from ai_dev.core import retrieval as core_retrieval
 from ai_dev.templates import (
     AGENT_SERVER,
@@ -340,25 +341,11 @@ def get_file_git_metadata(root: Path, rel_path: str, branch_name: str) -> dict:
 
 
 def load_index_state(expected_root: Path) -> dict:
-    if not INDEX_STATE_PATH.exists():
-        return {}
-    try:
-        state = json.loads(INDEX_STATE_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    if str(expected_root) != str(state.get("root", "")):
-        return {}
-    return state
+    return core_index_state.load_index_state(path=INDEX_STATE_PATH, expected_root=expected_root)
 
 
 def save_index_state(root: Path, file_meta: dict[str, dict]) -> None:
-    payload = {
-        "schema_version": 1,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "root": str(root),
-        "files": file_meta,
-    }
-    write_file(INDEX_STATE_PATH, json.dumps(payload, indent=2) + "\n")
+    core_index_state.save_index_state(path=INDEX_STATE_PATH, root=root, file_meta=file_meta)
 
 
 def install_index_git_hooks() -> None:
