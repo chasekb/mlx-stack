@@ -641,3 +641,11 @@ following items remain incomplete for production-grade behavior.
   - run lifecycle event emission (`run_started`, `run_completed`).
 - Updated `agent/server.py` to delegate `run_agent_task(...)` to `agent.task_runner` while preserving the same wrapper function signature and output contract used by existing tests and call sites.
 - Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.
+
+#### F completion notes (agent schemas extraction tranche)
+
+- Added `agent/schemas.py` to centralize tool contract constants used by the agent runtime:
+  - `ALLOWED_TOOLS`
+  - `TOOL_SCHEMAS`
+- Updated `agent/server.py` to delegate schema constants to `agent.schemas` while preserving existing behavior for tool allowlist enforcement and `/tools` schema exposure.
+- Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.

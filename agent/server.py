@@ -12,6 +12,7 @@ from agent import cache_kv
 from agent import observability
 from agent import retrieval
 from agent import runtime_context
+from agent import schemas
 from agent import task_runner
 from agent import tooling
 
@@ -26,46 +27,9 @@ EVENT_LOG_PATH = ROOT / ".ai-dev" / "events" / "agent.jsonl"
 DEFAULT_CACHE_TTL_SECONDS = 600
 DEFAULT_KV_MODEL_BUDGET_TOKENS = cache_kv.DEFAULT_KV_MODEL_BUDGET_TOKENS
 DEFAULT_KV_ENTRY_MAX_TOKENS = cache_kv.DEFAULT_KV_ENTRY_MAX_TOKENS
-ALLOWED_TOOLS = {
-    "retrieve",
-    "search_code",
-    "read_file",
-    "git_diff",
-    "run_tests",
-    "write_patch",
-    "commit_changes",
-}
+ALLOWED_TOOLS = schemas.ALLOWED_TOOLS
 
-TOOL_SCHEMAS = {
-    "retrieve": {
-        "description": "Retrieve relevant symbols/chunks from local index",
-        "input": {"query": "string", "top_k": "int?", "path_prefix": "string?"},
-    },
-    "search_code": {
-        "description": "Regex search across repository files",
-        "input": {"regex": "string", "file_pattern": "string?", "limit": "int?"},
-    },
-    "read_file": {
-        "description": "Read a file from repo",
-        "input": {"path": "string", "max_chars": "int?"},
-    },
-    "git_diff": {
-        "description": "Get current git diff summary",
-        "input": {},
-    },
-    "run_tests": {
-        "description": "Run tests in dry-run or execute mode",
-        "input": {"command": "string?"},
-    },
-    "write_patch": {
-        "description": "Apply patch to repo (blocked in dry-run)",
-        "input": {"patch": "string"},
-    },
-    "commit_changes": {
-        "description": "Commit current changes (blocked in dry-run)",
-        "input": {"message": "string"},
-    },
-}
+TOOL_SCHEMAS = schemas.TOOL_SCHEMAS
 
 PATCH_DENY_PREFIXES = tooling.PATCH_DENY_PREFIXES
 

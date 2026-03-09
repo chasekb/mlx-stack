@@ -521,6 +521,13 @@ Recent agent task-runner modularization progress extracted plan-execution/run-tr
 `agent/server.py` now delegates `run_agent_task(...)` orchestration to this module while preserving
 the existing wrapper signature and runtime response contract used by tests and current call paths.
 
+Recent agent schemas modularization progress extracted tool contract constants into:
+
+- `agent/schemas.py` (`ALLOWED_TOOLS`, `TOOL_SCHEMAS`)
+
+`agent/server.py` now delegates tool allowlist and schema contract constants to this module while preserving
+existing `/tools` response shape and tool dispatch guard behavior used by tests and runtime call paths.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
