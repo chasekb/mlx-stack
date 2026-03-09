@@ -486,6 +486,13 @@ Recent agent modularization progress extracted cache/KV state helpers into:
 `agent/server.py` now delegates cache/KV wrappers to this module while preserving existing
 function names and constants used by current tests.
 
+Recent agent tooling modularization progress extracted tool-execution and patch-guard logic into:
+
+- `agent/tooling.py` (tool dispatcher, patch-path safety checks, snapshot/rollback helpers, tool command handlers)
+
+`agent/server.py` now delegates tool wrappers and dispatch to this module while preserving
+existing wrapper names used by tests and current runtime call paths.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

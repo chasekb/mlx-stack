@@ -592,3 +592,12 @@ following items remain incomplete for production-grade behavior.
   - cache entry read/write helpers with TTL handling
   - KV reuse status computation and model-budget eviction helpers.
 - Updated `agent/server.py` to delegate cache/KV wrappers and constants to `agent.cache_kv`, preserving existing imports used by tests while reducing state-management coupling in the HTTP/tool orchestration module.
+
+#### F completion notes (agent tooling extraction tranche)
+
+- Added `agent/tooling.py` to centralize file-safe patch helpers and tool execution primitives:
+  - patch path normalization/extraction and allow/deny checks
+  - snapshot/rollback helpers
+  - tool implementations (`search_code`, `read_file`, `git_diff`, `run_tests`, `write_patch`, `commit_changes`)
+  - shared `execute_tool_call(...)` dispatcher.
+- Updated `agent/server.py` to delegate tooling wrappers and dispatch to `agent.tooling` while retaining existing wrapper function names for compatibility with current tests and call sites.
