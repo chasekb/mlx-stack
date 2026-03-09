@@ -479,6 +479,13 @@ Recent modularization progress extracted shared CLI internals into `ai_dev/core/
 `ai_dev/cli.py` now delegates to these modules for indexing/retrieval helper behavior,
 which keeps command behavior stable while reducing coupling in the main CLI module.
 
+Recent agent modularization progress extracted cache/KV state helpers into:
+
+- `agent/cache_kv.py` (prompt-cache persistence, KV reuse/budget helpers, JSON file I/O wrappers)
+
+`agent/server.py` now delegates cache/KV wrappers to this module while preserving existing
+function names and constants used by current tests.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

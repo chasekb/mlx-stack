@@ -584,3 +584,11 @@ following items remain incomplete for production-grade behavior.
   - `load_index_state(path, expected_root)`
   - `save_index_state(path, root, file_meta)`
 - Updated `ai_dev/cli.py` to delegate index state wrapper functions to `ai_dev.core.index_state`, preserving command behavior while further reducing persistence-specific coupling in the CLI module.
+
+#### F completion notes (agent cache/KV extraction tranche)
+
+- Added `agent/cache_kv.py` to centralize prompt-cache and KV-cache persistence/reuse logic:
+  - JSON load/save helpers for cache/KV files
+  - cache entry read/write helpers with TTL handling
+  - KV reuse status computation and model-budget eviction helpers.
+- Updated `agent/server.py` to delegate cache/KV wrappers and constants to `agent.cache_kv`, preserving existing imports used by tests while reducing state-management coupling in the HTTP/tool orchestration module.
