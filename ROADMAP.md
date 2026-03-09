@@ -545,7 +545,7 @@ following items remain incomplete for production-grade behavior.
 
 ### F) Codebase refactoring and modularization
 
-1. Refactor `ai_dev/cli.py` into smaller modules (command groups + shared utilities) to reduce coupling and file size.
+1. [~] Refactor `ai_dev/cli.py` into smaller modules (command groups + shared utilities) to reduce coupling and file size.
 2. [x] Extract embedded service templates/constants from `ai_dev/cli.py` into dedicated template files or a template package.
 3. Split `agent/server.py` into focused modules (cache, kv-cache, tool execution, HTTP handlers) to improve maintainability.
 4. Add lightweight architecture boundaries (e.g., `ai_dev/core`, `ai_dev/services`, `ai_dev/templates`) and update imports accordingly.
@@ -561,3 +561,11 @@ following items remain incomplete for production-grade behavior.
   - `embedding_queue/server.py`
   - `embedding_worker/worker.py`
 - Updated packaging config in `pyproject.toml` to include subpackages (`ai_dev.*`), ensuring `ai_dev.templates` is distributed.
+
+#### F completion notes (core extraction tranche)
+
+- Added `ai_dev/core/` package and extracted reusable indexing/retrieval logic from `ai_dev/cli.py` into:
+  - `ai_dev/core/indexing.py`
+  - `ai_dev/core/retrieval.py`
+- Updated `ai_dev/cli.py` to delegate key indexing/retrieval helpers to the new core modules while preserving existing CLI behavior and command contracts.
+- Preserved backward compatibility for current tests by keeping existing helper function names in `ai_dev/cli.py` as thin wrappers around core implementations.

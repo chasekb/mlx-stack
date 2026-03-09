@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from ai_dev.core import indexing as core_indexing
+from ai_dev.core import retrieval as core_retrieval
 from ai_dev.templates import (
     AGENT_SERVER,
     EMBED_QUEUE_SERVER,
@@ -305,103 +307,23 @@ def command_pull_models(args: argparse.Namespace) -> int:
 
 
 def iter_source_files(root: Path, max_bytes: int) -> Iterable[Path]:
-    skip_dirs = {".git", ".venv", "node_modules", "__pycache__", ".ai-dev"}
-    allowed = {
-        ".py",
-        ".md",
-        ".txt",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".toml",
-        ".js",
-        ".ts",
-        ".tsx",
-        ".jsx",
-        ".sh",
-        ".sql",
-        ".go",
-        ".rs",
-        ".java",
-        ".c",
-        ".cpp",
-        ".h",
-    }
-    for p in root.rglob("*"):
-        if not p.is_file():
-            continue
-        if any(part in skip_dirs for part in p.parts):
-            continue
-        if p.suffix.lower() not in allowed:
-            continue
-        if p.stat().st_size > max_bytes:
-            continue
-        yield p
+    return core_indexing.iter_source_files(root, max_bytes=max_bytes)
 
 
 def collect_source_files(root: Path, max_bytes: int) -> dict[str, Path]:
-    files: dict[str, Path] = {}
-    for p in iter_source_files(root, max_bytes=max_bytes):
-        files[str(p.relative_to(root))] = p
-    return files
+    return core_indexing.collect_source_files(root, max_bytes=max_bytes)
 
 
 def tokenize(text: str) -> list[str]:
-    return [tok for tok in re.split(r"[^a-zA-Z0-9_]+", text.lower()) if len(tok) >= 2]
+    return core_retrieval.tokenize(text)
 
 
 def extract_symbols(file_path: Path, content: str) -> list[dict]:
-    suffix = file_path.suffix.lower()
-    symbols: list[dict] = []
-    lines = content.splitlines()
-
-    def add(name: str, line_no: int, kind: str) -> None:
-        symbols.append({"name": name, "line": line_no, "kind": kind})
-
-    for i, line in enumerate(lines, start=1):
-        if suffix == ".py":
-            m = re.match(r"^\s*(def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", line)
-            if m:
-                add(m.group(2), i, m.group(1))
-        elif suffix in {".js", ".ts", ".jsx", ".tsx"}:
-            m = re.match(r"^\s*(export\s+)?(async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)", line)
-            if m:
-                add(m.group(3), i, "function")
-            m2 = re.match(r"^\s*(export\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", line)
-            if m2:
-                add(m2.group(2), i, "class")
-        elif suffix == ".go":
-            m = re.match(r"^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)", line)
-            if m:
-                add(m.group(1), i, "func")
-        elif suffix == ".rs":
-            m = re.match(r"^\s*(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)", line)
-            if m:
-                add(m.group(1), i, "fn")
-    return symbols
+    return core_indexing.extract_symbols(file_path, content)
 
 
 def build_chunks(content: str, lines_per_chunk: int = 80) -> list[dict]:
-    lines = content.splitlines()
-    chunks = []
-    chunk_id = 0
-    for start in range(0, len(lines), lines_per_chunk):
-        chunk_id += 1
-        end = min(start + lines_per_chunk, len(lines))
-        text = "\n".join(lines[start:end])
-        tok_counter = Counter(tokenize(text))
-        chunks.append(
-            {
-                "chunk_id": chunk_id,
-                "start_line": start + 1,
-                "end_line": end,
-                "token_count": sum(tok_counter.values()),
-                "top_terms": dict(tok_counter.most_common(15)),
-                "text_preview": text[:300],
-                "terms": list(tok_counter.keys()),
-            }
-        )
-    return chunks
+    return core_indexing.build_chunks(content, lines_per_chunk=lines_per_chunk)
 
 
 def get_git_changed_files(root: Path) -> set[str]:
@@ -719,17 +641,11 @@ def _configure_index_mode_args(p_index: argparse.ArgumentParser) -> None:
 
 
 def _safe_int(value: object, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+    return core_retrieval.safe_int(value, default=default)
 
 
 def _recency_boost_from_commit_ts(commit_ts: int, now_ts: float) -> float:
-    if commit_ts <= 0:
-        return 0.0
-    age_days = max(0.0, (now_ts - float(commit_ts)) / 86_400.0)
-    return max(0.0, round(1.5 * (2.0 / (2.0 + age_days)), 4))
+    return core_retrieval.recency_boost_from_commit_ts(commit_ts, now_ts)
 
 
 def _score_symbol_match(
@@ -741,38 +657,15 @@ def _score_symbol_match(
     include_changed_bias: bool,
     now_ts: float,
 ) -> dict | None:
-    p = str(symbol.get("path", ""))
-    name = str(symbol.get("name", ""))
-
-    lexical_score = 0.0
-    name_terms = set(tokenize(name))
-    lexical_score += len(query_terms.intersection(name_terms)) * 3.0
-    lexical_score += 1.0 if any(t in name.lower() for t in query_terms) else 0.0
-
-    path_score = 1.5 if path_prefix and p.startswith(path_prefix) else 0.0
-    changed_score = 1.0 if include_changed_bias and p in changed_files else 0.0
-
-    branch = str(symbol.get("git_branch", "") or "")
-    branch_score = 0.8 if current_branch != "unknown" and branch == current_branch else 0.0
-
-    recency_raw = _recency_boost_from_commit_ts(_safe_int(symbol.get("git_commit_ts", 0), 0), now_ts)
-    recency_score = round(recency_raw * 0.6, 4)
-
-    total = lexical_score + path_score + changed_score + branch_score + recency_score
-    if total <= 0:
-        return None
-
-    return {
-        "score": round(total, 4),
-        "score_breakdown": {
-            "lexical": round(lexical_score, 4),
-            "path_prefix": round(path_score, 4),
-            "changed_file": round(changed_score, 4),
-            "branch_match": round(branch_score, 4),
-            "recency": round(recency_score, 4),
-            "recency_raw": round(recency_raw, 4),
-        },
-    }
+    return core_retrieval.score_symbol_match(
+        symbol=symbol,
+        query_terms=query_terms,
+        path_prefix=path_prefix,
+        changed_files=changed_files,
+        current_branch=current_branch,
+        include_changed_bias=include_changed_bias,
+        now_ts=now_ts,
+    )
 
 
 def _score_chunk_match(
@@ -784,34 +677,15 @@ def _score_chunk_match(
     include_changed_bias: bool,
     now_ts: float,
 ) -> dict | None:
-    p = str(chunk.get("path", ""))
-    chunk_terms = set(chunk.get("terms", []))
-
-    lexical_score = float(len(query_terms.intersection(chunk_terms)))
-    path_score = 2.0 if path_prefix and p.startswith(path_prefix) else 0.0
-    changed_score = 1.5 if include_changed_bias and p in changed_files else 0.0
-
-    branch = str(chunk.get("git_branch", "") or "")
-    branch_score = 0.9 if current_branch != "unknown" and branch == current_branch else 0.0
-
-    recency_raw = _recency_boost_from_commit_ts(_safe_int(chunk.get("git_commit_ts", 0), 0), now_ts)
-    recency_score = round(recency_raw * 0.8, 4)
-
-    total = lexical_score + path_score + changed_score + branch_score + recency_score
-    if total <= 0:
-        return None
-
-    return {
-        "score": round(total, 4),
-        "score_breakdown": {
-            "lexical": round(lexical_score, 4),
-            "path_prefix": round(path_score, 4),
-            "changed_file": round(changed_score, 4),
-            "branch_match": round(branch_score, 4),
-            "recency": round(recency_score, 4),
-            "recency_raw": round(recency_raw, 4),
-        },
-    }
+    return core_retrieval.score_chunk_match(
+        chunk=chunk,
+        query_terms=query_terms,
+        path_prefix=path_prefix,
+        changed_files=changed_files,
+        current_branch=current_branch,
+        include_changed_bias=include_changed_bias,
+        now_ts=now_ts,
+    )
 
 
 def command_retrieve(args: argparse.Namespace) -> int:

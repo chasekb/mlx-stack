@@ -467,6 +467,16 @@ curl "http://localhost:8093/stats"
 - The indexing command uses a local JSON-based lexical index (no cloud).
 - You can swap in full embeddings/RAG later (Qdrant + LlamaIndex) while keeping the CLI workflow.
 
+## Refactor progress (F slice)
+
+Recent modularization progress extracted shared CLI internals into `ai_dev/core/`:
+
+- `ai_dev/core/indexing.py` (source-file iteration, symbol extraction, chunk building)
+- `ai_dev/core/retrieval.py` (tokenization, recency utilities, symbol/chunk scoring)
+
+`ai_dev/cli.py` now delegates to these modules for indexing/retrieval helper behavior,
+which keeps command behavior stable while reducing coupling in the main CLI module.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
