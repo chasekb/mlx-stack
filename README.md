@@ -500,6 +500,13 @@ Recent agent runtime-context modularization progress extracted cache-context/key
 `agent/server.py` now delegates runtime context wrapper helpers to this module while preserving
 existing wrapper names used by tests and current runtime call paths.
 
+Recent agent retrieval modularization progress extracted retrieval scoring helpers into:
+
+- `agent/retrieval.py` (query tokenization and top-k symbol/chunk retrieval scoring logic)
+
+`agent/server.py` now delegates retrieval wrapper helpers to this module while preserving
+existing wrapper names used by tests and current runtime call paths.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

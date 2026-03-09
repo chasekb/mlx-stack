@@ -612,3 +612,11 @@ following items remain incomplete for production-grade behavior.
   - deterministic cache key hashing.
 - Updated `agent/server.py` to delegate runtime context wrappers (`get_git_branch`, `get_index_signature`, `compute_cache_namespace`, `normalize_task_payload`, `compute_cache_key`) to `agent.runtime_context` while preserving existing wrapper names for compatibility with tests and call sites.
 - Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and validated template/runtime parity after extraction.
+
+#### F completion notes (agent retrieval extraction tranche)
+
+- Added `agent/retrieval.py` to centralize retrieval-scoring helpers used by the agent runtime:
+  - `tokenize(text)`
+  - `retrieve(index_obj, query, top_k, path_prefix)`.
+- Updated `agent/server.py` to delegate retrieval wrapper functions (`tokenize`, `retrieve`) to `agent.retrieval` while preserving existing wrapper names and call signatures for compatibility with tests and tool-dispatch call paths.
+- Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.
