@@ -22,6 +22,7 @@ from ai_dev.core import model_ops as core_model_ops
 from ai_dev.core import remote_ops as core_remote_ops
 from ai_dev.core import retrieve_ops as core_retrieve_ops
 from ai_dev.core import retrieval as core_retrieval
+from ai_dev.core import stack_ops as core_stack_ops
 from ai_dev.command_groups import register_all_commands
 from ai_dev.templates import (
     AGENT_HTTP_API,
@@ -182,26 +183,7 @@ def ensure_config_schema(cfg: dict) -> dict:
 
 
 def generate_litellm_config(cfg: dict) -> str:
-    models = cfg.get("models") or DEFAULT_CONFIG["models"]
-    lines = ["model_list:"]
-    for m in models:
-        name = m.get("name", "local-mlx")
-        backend_model = m.get("backend_model", "openai/local-mlx")
-        api_base = m.get("api_base", "http://mlx:8081/v1")
-        api_key = m.get("api_key", "local-dev")
-        lines.extend(
-            [
-                f"  - model_name: {name}",
-                "    litellm_params:",
-                f"      model: {backend_model}",
-                f"      api_base: {api_base}",
-                f"      api_key: {api_key}",
-            ]
-        )
-
-    master_key = cfg.get("cursor", {}).get("api_key", "local-dev")
-    lines.extend(["", "general_settings:", f"  master_key: {master_key}"])
-    return "\n".join(lines) + "\n"
+    return core_stack_ops.generate_litellm_config(cfg, DEFAULT_CONFIG["models"])
 
 
 def command_init(_: argparse.Namespace) -> int:
@@ -228,90 +210,27 @@ def command_init(_: argparse.Namespace) -> int:
 
 
 def _compose_command() -> list[str]:
-    compose_file = Path("podman-compose.yml")
-    if not compose_file.exists():
-        print("Missing podman-compose.yml. Run `ai-dev init` first.", file=sys.stderr)
-        raise SystemExit(2)
-    return ["podman", "compose", "-f", str(compose_file)]
+    return core_stack_ops.compose_command(Path("podman-compose.yml"))
 
 
 def command_up(args: argparse.Namespace) -> int:
-    cmd = _compose_command() + ["up", "-d"]
-    if args.with_optional:
-        cmd.extend(["--profile", "optional"])
-    return run(cmd)
+    return core_stack_ops.command_up(args, compose_command_fn=_compose_command, run_fn=run)
 
 
 def command_down(_: argparse.Namespace) -> int:
-    cmd = _compose_command() + ["down"]
-    return run(cmd)
+    return core_stack_ops.command_down(_, compose_command_fn=_compose_command, run_fn=run)
 
 
 def command_status(_: argparse.Namespace) -> int:
-    cmd = _compose_command() + ["ps"]
-    return run(cmd)
+    return core_stack_ops.command_status(_, compose_command_fn=_compose_command, run_fn=run)
 
 
 def command_pull_models(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    if args.profile:
-        profiles = [m for m in cfg.get("models", []) if m.get("name") == args.profile]
-    else:
-        profiles = cfg.get("models", [])
-
-    if not profiles:
-        print("No matching model profiles found.", file=sys.stderr)
-        return 2
-
-    commands: list[tuple[str, list[str]]] = []
-    for m in profiles:
-        name = m.get("name", "local-mlx")
-        hf_model = m.get("hf_model") or args.model
-        q = m.get("quantization", f"{args.quantization}bit").replace("bit", "")
-        output_path = m.get("output_path", f"models/{name}")
-        Path(output_path).mkdir(parents=True, exist_ok=True)
-
-        cmd = [
-            sys.executable,
-            "-m",
-            "mlx_lm.convert",
-            "--hf-path",
-            hf_model,
-            "--quantize",
-            q,
-            "--output-path",
-            output_path,
-        ]
-        commands.append((name, cmd))
-
-    if args.dry_run:
-        print("Dry run (commands to execute):\n")
-        for name, cmd in commands:
-            print(f"# Profile: {name}")
-            print(" ".join(cmd))
-            print("")
-        return 0
-
-    rc = 0
-    for name, cmd in commands:
-        print(f"[pull-models] Converting profile: {name}")
-        proc = subprocess.run(cmd)
-        if proc.returncode != 0:
-            rc = proc.returncode
-            print(
-                f"[pull-models] Failed for profile '{name}'. "
-                "If mlx-lm is not installed in this Python env, install it first.",
-                file=sys.stderr,
-            )
-            if not args.continue_on_error:
-                return rc
-
-    if rc == 0:
-        print("[pull-models] Completed all model conversions.")
-    else:
-        print("[pull-models] Completed with errors.", file=sys.stderr)
-
-    return rc
+    return core_stack_ops.command_pull_models(
+        args,
+        load_config_fn=load_config,
+        python_executable=sys.executable,
+    )
 
 
 def iter_source_files(root: Path, max_bytes: int) -> Iterable[Path]:

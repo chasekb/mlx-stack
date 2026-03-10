@@ -708,3 +708,13 @@ following items remain incomplete for production-grade behavior.
 - Updated `ai_dev/cli.py` to delegate retrieval-facing command wrappers to `ai_dev.core.retrieve_ops` while preserving existing CLI command signatures and output contracts.
 - Preserved compatibility with current retrieval tests by keeping CLI-level scoring helper wrappers (`_recency_boost_from_commit_ts`, `_score_symbol_match`, `_score_chunk_match`, and `command_memory_explain`) and routing dependencies via injected callbacks.
 - This further reduces retrieval-specific coupling in `ai_dev/cli.py` and advances F.1 modularization progress while full CLI modularization remains in progress.
+
+#### F completion notes (CLI stack-ops extraction tranche)
+
+- Added `ai_dev/core/stack_ops.py` to centralize stack/runtime-oriented CLI command logic:
+  - compose command resolution/validation (`compose_command`)
+  - stack lifecycle handlers (`command_up`, `command_down`, `command_status`)
+  - model conversion flow (`command_pull_models`)
+  - LiteLLM config rendering helper (`generate_litellm_config`).
+- Updated `ai_dev/cli.py` to delegate the above stack-facing wrappers to `ai_dev.core.stack_ops` while preserving CLI command names, flags, and behavior.
+- This continues F.1 coupling reduction in `ai_dev/cli.py` and further narrows the remaining in-file command orchestration surface.

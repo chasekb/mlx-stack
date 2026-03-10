@@ -570,6 +570,13 @@ Recent CLI retrieval-ops modularization progress extracted retrieval command hel
 `ai_dev/cli.py` now delegates retrieval-facing command wrappers to this module while preserving
 existing command signatures/output behavior and compatibility with current retrieval-scoring test wrappers.
 
+Recent CLI stack-ops modularization progress extracted stack/runtime command helpers into:
+
+- `ai_dev/core/stack_ops.py` (`compose_command`, `command_up`, `command_down`, `command_status`, `command_pull_models`, and `generate_litellm_config`)
+
+`ai_dev/cli.py` now delegates stack-facing wrappers to this module while preserving
+existing command flags and behavior for compose lifecycle and model conversion flows.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
