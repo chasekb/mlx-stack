@@ -577,6 +577,13 @@ Recent CLI stack-ops modularization progress extracted stack/runtime command hel
 `ai_dev/cli.py` now delegates stack-facing wrappers to this module while preserving
 existing command flags and behavior for compose lifecycle and model conversion flows.
 
+Recent CLI index-ops modularization progress extracted indexing lifecycle helpers into:
+
+- `ai_dev/core/index_ops.py` (`install_index_git_hooks`, `index_single_file`, `run_index_pass`, and `command_index`)
+
+`ai_dev/cli.py` now delegates indexing orchestration wrappers to this module while preserving
+existing index command flags/output behavior and current compatibility contracts.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

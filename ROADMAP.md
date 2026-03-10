@@ -718,3 +718,13 @@ following items remain incomplete for production-grade behavior.
   - LiteLLM config rendering helper (`generate_litellm_config`).
 - Updated `ai_dev/cli.py` to delegate the above stack-facing wrappers to `ai_dev.core.stack_ops` while preserving CLI command names, flags, and behavior.
 - This continues F.1 coupling reduction in `ai_dev/cli.py` and further narrows the remaining in-file command orchestration surface.
+
+#### F completion notes (CLI index-ops extraction tranche)
+
+- Added `ai_dev/core/index_ops.py` to centralize indexing lifecycle helpers and command flow:
+  - git-hook install logic (`install_index_git_hooks`)
+  - per-file indexing helper (`index_single_file`)
+  - incremental/full index assembly (`run_index_pass`)
+  - index command orchestration (`command_index`).
+- Updated `ai_dev/cli.py` to delegate index-facing wrappers to `ai_dev.core.index_ops` while preserving existing CLI flags, output messaging, and command contracts.
+- This continues F.1 modularization by reducing indexing-specific orchestration code in `ai_dev/cli.py` and retaining compatibility through thin CLI wrappers.
