@@ -680,3 +680,12 @@ following items remain incomplete for production-grade behavior.
 - Added `ai_dev/command_groups.py` to centralize CLI parser command/subcommand registration and argument wiring.
 - Updated `ai_dev/cli.py` to delegate parser construction to `register_all_commands(...)` while preserving all existing command handler functions and CLI contracts.
 - This reduces parser-definition coupling in `ai_dev/cli.py` and advances F.1, while full CLI modularization remains in progress.
+
+#### F completion notes (CLI remote-ops extraction tranche)
+
+- Added `ai_dev/core/remote_ops.py` to centralize remote-service CLI helpers and handlers:
+  - speculative decode command flow
+  - embedding queue enqueue/stats command flows
+  - shared HTTP JSON request helper.
+- Updated `ai_dev/cli.py` to delegate remote-facing command wrappers to `ai_dev.core.remote_ops` while preserving existing CLI command names, flags, and output contracts.
+- This further reduces non-parser coupling in `ai_dev/cli.py` and advances F.1 modularization progress while leaving final command-group decomposition work still open.

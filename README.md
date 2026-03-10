@@ -549,6 +549,13 @@ Recent CLI parser modularization progress extracted command registration into:
 `ai_dev/cli.py` now delegates parser/subcommand construction via `register_all_commands(...)` while preserving
 existing command handler functions and CLI behavior.
 
+Recent CLI remote-ops modularization progress extracted remote command helpers into:
+
+- `ai_dev/core/remote_ops.py` (spec decode command flow, embed queue enqueue/stats flows, shared HTTP JSON helper)
+
+`ai_dev/cli.py` now delegates remote-facing command wrappers to this module while preserving
+existing CLI command contracts and output behavior.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
