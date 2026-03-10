@@ -674,3 +674,9 @@ following items remain incomplete for production-grade behavior.
   - emitted by `ai_dev/cli.py` during `ai-dev init`
   - added to parity enforcement in `tools/check_template_parity.py`.
 - Re-ran parity/tests/compile validation after extraction to confirm no behavior regressions.
+
+#### F completion notes (CLI command-group extraction tranche)
+
+- Added `ai_dev/command_groups.py` to centralize CLI parser command/subcommand registration and argument wiring.
+- Updated `ai_dev/cli.py` to delegate parser construction to `register_all_commands(...)` while preserving all existing command handler functions and CLI contracts.
+- This reduces parser-definition coupling in `ai_dev/cli.py` and advances F.1, while full CLI modularization remains in progress.

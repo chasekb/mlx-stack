@@ -542,6 +542,13 @@ Template/runtime parity and init scaffolding were updated accordingly:
 - emitted by `ai-dev init` in `ai_dev/cli.py`
 - validated by `tools/check_template_parity.py`.
 
+Recent CLI parser modularization progress extracted command registration into:
+
+- `ai_dev/command_groups.py` (centralized subcommand wiring and argparse option definitions)
+
+`ai_dev/cli.py` now delegates parser/subcommand construction via `register_all_commands(...)` while preserving
+existing command handler functions and CLI behavior.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
