@@ -584,6 +584,14 @@ Recent CLI index-ops modularization progress extracted indexing lifecycle helper
 `ai_dev/cli.py` now delegates indexing orchestration wrappers to this module while preserving
 existing index command flags/output behavior and current compatibility contracts.
 
+Recent CLI config/init modularization progress extracted configuration and initialization helpers into:
+
+- `ai_dev/core/config_ops.py` (`DEFAULT_CONFIG`, `TASK_TAG_ALIASES`, `ensure_config_schema`, and `load_config`)
+- `ai_dev/core/init_ops.py` (`command_init` orchestration for generated files and config writes)
+
+`ai_dev/cli.py` now delegates config/init wrappers to these modules while preserving
+existing command contracts, generated output behavior, and compatibility with current call paths.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

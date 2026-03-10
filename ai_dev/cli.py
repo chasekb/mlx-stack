@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import argparse
-import copy
-import json
-import re
 import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from ai_dev.core import config_ops as core_config_ops
 from ai_dev.core import git_ops as core_git_ops
+from ai_dev.core import init_ops as core_init_ops
 from ai_dev.core import index_ops as core_index_ops
 from ai_dev.core import indexing as core_indexing
 from ai_dev.core import index_state as core_index_state
@@ -60,68 +55,8 @@ INDEX_STATE_PATH = APP_DIR / "index_state.json"
 
 
 
-DEFAULT_CONFIG = {
-    "created_at": "",
-    "stack": {
-        "mlx_port": 8081,
-        "litellm_port": 4000,
-        "spec_router_port": 8092,
-        "embed_queue_port": 8093,
-        "default_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
-    },
-    "models": [
-        {
-            "name": "local-mlx-fast",
-            "backend_model": "openai/local-mlx-fast",
-            "api_base": "http://mlx:8081/v1",
-            "api_key": "local-dev",
-            "hf_model": "Qwen/Qwen3.5-Coder-1.5B-Instruct",
-            "mlx_model": "mlx-community/Qwen3.5-Coder-1.5B-Instruct-4bit",
-            "quantization": "4bit",
-            "tags": ["fast", "default"],
-        },
-        {
-            "name": "local-mlx",
-            "backend_model": "openai/local-mlx",
-            "api_base": "http://mlx:8081/v1",
-            "api_key": "local-dev",
-            "hf_model": "Qwen/Qwen3.5-Coder-3B-Instruct",
-            "mlx_model": "mlx-community/Qwen3.5-Coder-3B-Instruct-4bit",
-            "quantization": "4bit",
-            "tags": ["quality", "default"],
-        },
-        {
-            "name": "local-mlx-longctx",
-            "backend_model": "openai/local-mlx-longctx",
-            "api_base": "http://mlx:8081/v1",
-            "api_key": "local-dev",
-            "hf_model": "Qwen/Qwen3.5-Coder-7B-Instruct",
-            "mlx_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
-            "quantization": "4bit",
-            "tags": ["longctx", "analysis"],
-        },
-    ],
-    "routing": {
-        "fast": "local-mlx-fast",
-        "quality": "local-mlx",
-        "longctx": "local-mlx-longctx",
-        "analysis": "local-mlx-longctx",
-        "default": "local-mlx",
-    },
-    "cursor": {
-        "base_url": "http://localhost:4000/v1",
-        "api_key": "local-dev",
-        "model": "local-mlx",
-    },
-}
-
-TASK_TAG_ALIASES = {
-    "default": ["default", "quality"],
-    "quality": ["quality", "default"],
-    "fast": ["fast", "default"],
-    "longctx": ["longctx", "analysis", "default"],
-    "analysis": ["analysis", "longctx", "quality", "default"],
-}
+DEFAULT_CONFIG = core_config_ops.DEFAULT_CONFIG
+TASK_TAG_ALIASES = core_config_ops.TASK_TAG_ALIASES
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> int:
@@ -138,47 +73,15 @@ def write_file(path: Path, content: str, executable: bool = False) -> None:
 
 
 def load_config() -> dict:
-    if CONFIG_PATH.exists():
-        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        return ensure_config_schema(cfg)
-    cfg = copy.deepcopy(DEFAULT_CONFIG)
-    cfg["created_at"] = datetime.now(timezone.utc).isoformat()
-    return cfg
+    return core_config_ops.load_config(
+        config_path=CONFIG_PATH,
+        default_config=DEFAULT_CONFIG,
+        ensure_config_schema_fn=ensure_config_schema,
+    )
 
 
 def ensure_config_schema(cfg: dict) -> dict:
-    if "models" not in cfg or not isinstance(cfg["models"], list) or not cfg["models"]:
-        cfg["models"] = copy.deepcopy(DEFAULT_CONFIG["models"])
-
-    if "cursor" not in cfg or not isinstance(cfg["cursor"], dict):
-        cfg["cursor"] = copy.deepcopy(DEFAULT_CONFIG["cursor"])
-
-    if not cfg["cursor"].get("model"):
-        cfg["cursor"]["model"] = cfg["models"][0]["name"]
-
-    if not cfg["cursor"].get("base_url"):
-        cfg["cursor"]["base_url"] = DEFAULT_CONFIG["cursor"]["base_url"]
-
-    if not cfg["cursor"].get("api_key"):
-        cfg["cursor"]["api_key"] = DEFAULT_CONFIG["cursor"]["api_key"]
-
-    if "stack" not in cfg or not isinstance(cfg["stack"], dict):
-        cfg["stack"] = copy.deepcopy(DEFAULT_CONFIG["stack"])
-    else:
-        for k, v in DEFAULT_CONFIG["stack"].items():
-            cfg["stack"].setdefault(k, v)
-
-    if "routing" not in cfg or not isinstance(cfg["routing"], dict):
-        cfg["routing"] = copy.deepcopy(DEFAULT_CONFIG["routing"])
-    else:
-        for k, v in DEFAULT_CONFIG["routing"].items():
-            cfg["routing"].setdefault(k, v)
-
-    for m in cfg.get("models", []):
-        if not m.get("output_path"):
-            m["output_path"] = f"models/{m.get('name', 'local-mlx')}"
-
-    return cfg
+    return core_config_ops.ensure_config_schema(cfg, default_config=DEFAULT_CONFIG)
 
 
 def generate_litellm_config(cfg: dict) -> str:
@@ -186,26 +89,25 @@ def generate_litellm_config(cfg: dict) -> str:
 
 
 def command_init(_: argparse.Namespace) -> int:
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-
-    config = load_config()
-    config["created_at"] = config.get("created_at") or datetime.now(timezone.utc).isoformat()
-
-    write_file(Path("podman-compose.yml"), PODMAN_COMPOSE_YAML)
-    write_file(Path("litellm_config.yaml"), generate_litellm_config(config))
-    write_file(Path("mlx/entrypoint.sh"), MLX_ENTRYPOINT, executable=True)
-    write_file(Path("mlx/Dockerfile"), MLX_DOCKERFILE)
-    write_file(Path("rag/server.py"), RAG_SERVER)
-    write_file(Path("agent/server.py"), AGENT_SERVER)
-    write_file(Path("agent/http_api.py"), AGENT_HTTP_API)
-    write_file(Path("spec_router/server.py"), SPEC_ROUTER_SERVER)
-    write_file(Path("embedding_queue/server.py"), EMBED_QUEUE_SERVER)
-    write_file(Path("embedding_worker/worker.py"), EMBED_WORKER)
-
-    write_file(CONFIG_PATH, json.dumps(config, indent=2) + "\n")
-
-    print("Initialized local AI dev stack files.")
-    return 0
+    return core_init_ops.command_init(
+        _,
+        app_dir=APP_DIR,
+        config_path=CONFIG_PATH,
+        load_config_fn=load_config,
+        write_file_fn=write_file,
+        generate_litellm_config_fn=generate_litellm_config,
+        template_files=[
+            (Path("podman-compose.yml"), PODMAN_COMPOSE_YAML, False),
+            (Path("mlx/entrypoint.sh"), MLX_ENTRYPOINT, True),
+            (Path("mlx/Dockerfile"), MLX_DOCKERFILE, False),
+            (Path("rag/server.py"), RAG_SERVER, False),
+            (Path("agent/server.py"), AGENT_SERVER, False),
+            (Path("agent/http_api.py"), AGENT_HTTP_API, False),
+            (Path("spec_router/server.py"), SPEC_ROUTER_SERVER, False),
+            (Path("embedding_queue/server.py"), EMBED_QUEUE_SERVER, False),
+            (Path("embedding_worker/worker.py"), EMBED_WORKER, False),
+        ],
+    )
 
 
 def _compose_command() -> list[str]:

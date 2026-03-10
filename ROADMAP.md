@@ -728,3 +728,15 @@ following items remain incomplete for production-grade behavior.
   - index command orchestration (`command_index`).
 - Updated `ai_dev/cli.py` to delegate index-facing wrappers to `ai_dev.core.index_ops` while preserving existing CLI flags, output messaging, and command contracts.
 - This continues F.1 modularization by reducing indexing-specific orchestration code in `ai_dev/cli.py` and retaining compatibility through thin CLI wrappers.
+
+#### F completion notes (CLI config/init extraction tranche)
+
+- Added `ai_dev/core/config_ops.py` to centralize CLI config schema/default handling:
+  - `DEFAULT_CONFIG`
+  - `TASK_TAG_ALIASES`
+  - `ensure_config_schema(...)`
+  - `load_config(...)`.
+- Added `ai_dev/core/init_ops.py` to centralize initialization orchestration:
+  - `command_init(...)` file-generation and config-write flow.
+- Updated `ai_dev/cli.py` to delegate config and init wrappers to `ai_dev.core.config_ops` / `ai_dev.core.init_ops` while preserving command contracts and compatibility with existing tests/callers.
+- This further narrows top-level orchestration in `ai_dev/cli.py` and advances F.1 toward full modularization completion.
