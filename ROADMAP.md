@@ -689,3 +689,13 @@ following items remain incomplete for production-grade behavior.
   - shared HTTP JSON request helper.
 - Updated `ai_dev/cli.py` to delegate remote-facing command wrappers to `ai_dev.core.remote_ops` while preserving existing CLI command names, flags, and output contracts.
 - This further reduces non-parser coupling in `ai_dev/cli.py` and advances F.1 modularization progress while leaving final command-group decomposition work still open.
+
+#### F completion notes (CLI model-ops extraction tranche)
+
+- Added `ai_dev/core/model_ops.py` to centralize model-routing/cursor command logic:
+  - task-tag model resolution
+  - `models` command output
+  - `route-model` command output
+  - `configure-cursor` command flow.
+- Updated `ai_dev/cli.py` to delegate model-facing command wrappers to `ai_dev.core.model_ops` while preserving existing command names/flags and output contracts.
+- This continues F.1 coupling reduction in `ai_dev/cli.py`; full command-group decomposition is still in progress.

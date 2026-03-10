@@ -556,6 +556,13 @@ Recent CLI remote-ops modularization progress extracted remote command helpers i
 `ai_dev/cli.py` now delegates remote-facing command wrappers to this module while preserving
 existing CLI command contracts and output behavior.
 
+Recent CLI model-ops modularization progress extracted model-routing/cursor command helpers into:
+
+- `ai_dev/core/model_ops.py` (task-tag model resolution, `models`, `route-model`, and `configure-cursor` command flows)
+
+`ai_dev/cli.py` now delegates model-facing command wrappers to this module while preserving
+existing command flags and output behavior.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

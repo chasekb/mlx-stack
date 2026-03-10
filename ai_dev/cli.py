@@ -18,6 +18,7 @@ from typing import Iterable
 from ai_dev.core import git_ops as core_git_ops
 from ai_dev.core import indexing as core_indexing
 from ai_dev.core import index_state as core_index_state
+from ai_dev.core import model_ops as core_model_ops
 from ai_dev.core import remote_ops as core_remote_ops
 from ai_dev.core import retrieval as core_retrieval
 from ai_dev.command_groups import register_all_commands
@@ -839,80 +840,25 @@ def command_memory_explain(args: argparse.Namespace) -> int:
 
 
 def command_configure_cursor(args: argparse.Namespace) -> int:
-    cfg = load_config()
-
-    selected_model = args.model
-    if not selected_model and args.task_tag:
-        selected_model = resolve_model_for_tag(cfg.get("models", []), args.task_tag)
-
-    if not selected_model:
-        selected_model = cfg["cursor"]["model"]
-
-    cursor_cfg = {
-        "name": "Local LiteLLM",
-        "provider": "openai",
-        "baseUrl": args.base_url or cfg["cursor"]["base_url"],
-        "apiKey": args.api_key or cfg["cursor"]["api_key"],
-        "model": selected_model,
-    }
-
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = APP_DIR / "cursor-openai.json"
-    write_file(output_path, json.dumps(cursor_cfg, indent=2) + "\n")
-
-    print("Use the following OpenAI-compatible model config in Cursor:")
-    print(json.dumps(cursor_cfg, indent=2))
-    print(f"\nSaved: {output_path}")
-    return 0
+    return core_model_ops.command_configure_cursor(
+        args,
+        load_config_fn=load_config,
+        write_file_fn=write_file,
+        app_dir=APP_DIR,
+        task_tag_aliases=TASK_TAG_ALIASES,
+    )
 
 
 def resolve_model_for_tag(models: list[dict], tag: str) -> str:
-    normalized = (tag or "").strip().lower()
-    preferred_tags = TASK_TAG_ALIASES.get(normalized, [normalized, "default"])
-
-    for wanted in preferred_tags:
-        for m in models:
-            tags = [str(t).lower() for t in m.get("tags", [])]
-            if wanted in tags:
-                return m.get("name", "local-mlx")
-
-    if models:
-        return models[0].get("name", "local-mlx")
-    return "local-mlx"
+    return core_model_ops.resolve_model_for_tag(models, tag, TASK_TAG_ALIASES)
 
 
 def command_route_model(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    models = cfg.get("models", [])
-    chosen = resolve_model_for_tag(models, args.task_tag)
-    if args.json:
-        print(json.dumps({"task_tag": args.task_tag, "model": chosen}, indent=2))
-    else:
-        print(chosen)
-    return 0
+    return core_model_ops.command_route_model(args, load_config_fn=load_config, task_tag_aliases=TASK_TAG_ALIASES)
 
 
 def command_models(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    models = cfg.get("models", [])
-
-    if args.json:
-        print(json.dumps(models, indent=2))
-        return 0
-
-    if not models:
-        print("No models configured in .ai-dev/config.json")
-        return 0
-
-    print("Configured model profiles:\n")
-    for m in models:
-        tags = ", ".join(m.get("tags", []))
-        print(f"- {m.get('name', 'unnamed')}")
-        print(f"  backend: {m.get('backend_model', '')}")
-        print(f"  api_base: {m.get('api_base', '')}")
-        if tags:
-            print(f"  tags: {tags}")
-    return 0
+    return core_model_ops.command_models(args, load_config_fn=load_config)
 
 
 def _tokenize_for_spec(text: str) -> list[str]:
