@@ -563,6 +563,13 @@ Recent CLI model-ops modularization progress extracted model-routing/cursor comm
 `ai_dev/cli.py` now delegates model-facing command wrappers to this module while preserving
 existing command flags and output behavior.
 
+Recent CLI retrieval-ops modularization progress extracted retrieval command helpers into:
+
+- `ai_dev/core/retrieve_ops.py` (`command_retrieve`, `command_memory_explain` command flows)
+
+`ai_dev/cli.py` now delegates retrieval-facing command wrappers to this module while preserving
+existing command signatures/output behavior and compatibility with current retrieval-scoring test wrappers.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

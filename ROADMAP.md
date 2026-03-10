@@ -699,3 +699,12 @@ following items remain incomplete for production-grade behavior.
   - `configure-cursor` command flow.
 - Updated `ai_dev/cli.py` to delegate model-facing command wrappers to `ai_dev.core.model_ops` while preserving existing command names/flags and output contracts.
 - This continues F.1 coupling reduction in `ai_dev/cli.py`; full command-group decomposition is still in progress.
+
+#### F completion notes (CLI retrieval-ops extraction tranche)
+
+- Added `ai_dev/core/retrieve_ops.py` to centralize retrieval command flows:
+  - `command_retrieve(...)`
+  - `command_memory_explain(...)`
+- Updated `ai_dev/cli.py` to delegate retrieval-facing command wrappers to `ai_dev.core.retrieve_ops` while preserving existing CLI command signatures and output contracts.
+- Preserved compatibility with current retrieval tests by keeping CLI-level scoring helper wrappers (`_recency_boost_from_commit_ts`, `_score_symbol_match`, `_score_chunk_match`, and `command_memory_explain`) and routing dependencies via injected callbacks.
+- This further reduces retrieval-specific coupling in `ai_dev/cli.py` and advances F.1 modularization progress while full CLI modularization remains in progress.
