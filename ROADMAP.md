@@ -388,7 +388,7 @@ following items remain incomplete for production-grade behavior.
 - [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
   - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
 - [ ] **F.3/F.4 Architecture boundary completion**
-  - `agent/server.py` internals were split into focused modules, but HTTP-handler decomposition and broader service-layer boundary formalization remain to be fully completed.
+  - `agent/server.py` internals were split into focused modules, and HTTP-handler decomposition is now completed via `agent/http_api.py`; broader service-layer boundary formalization remains to be fully completed.
 
 ### A) Agent mutation path hardening
 
@@ -662,3 +662,15 @@ following items remain incomplete for production-grade behavior.
   - `TOOL_SCHEMAS`
 - Updated `agent/server.py` to delegate schema constants to `agent.schemas` while preserving existing behavior for tool allowlist enforcement and `/tools` schema exposure.
 - Re-synced `AGENT_SERVER` template in `ai_dev/templates/service_templates.py` and re-ran parity/tests/compile validation after extraction.
+
+#### F completion notes (agent HTTP API extraction tranche)
+
+- Added `agent/http_api.py` to centralize HTTP transport and endpoint orchestration:
+  - `build_handler(context)` returns a `BaseHTTPRequestHandler` subclass with `GET` handlers for `/metrics`, `/tools`, `/runs/<id>`, `/retrieve`, `/health` and `POST /agent/run`.
+- Updated `agent/server.py` to delegate handler construction to `agent.http_api` while preserving existing wrapper exports/constants used by tests and runtime call sites.
+- Updated template/runtime wiring for the new module:
+  - added `AGENT_HTTP_API` in `ai_dev/templates/service_templates.py`
+  - exported in `ai_dev/templates/__init__.py`
+  - emitted by `ai_dev/cli.py` during `ai-dev init`
+  - added to parity enforcement in `tools/check_template_parity.py`.
+- Re-ran parity/tests/compile validation after extraction to confirm no behavior regressions.

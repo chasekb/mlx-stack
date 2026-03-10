@@ -8,6 +8,7 @@ from .service_templates import (
     EMBED_QUEUE_SERVER,
     EMBED_WORKER,
     AGENT_SERVER,
+    AGENT_HTTP_API,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "EMBED_QUEUE_SERVER",
     "EMBED_WORKER",
     "AGENT_SERVER",
+    "AGENT_HTTP_API",
 ]

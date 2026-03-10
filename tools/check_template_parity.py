@@ -7,10 +7,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ai_dev.templates import AGENT_SERVER, EMBED_QUEUE_SERVER, EMBED_WORKER, RAG_SERVER, SPEC_ROUTER_SERVER
+from ai_dev.templates import AGENT_HTTP_API, AGENT_SERVER, EMBED_QUEUE_SERVER, EMBED_WORKER, RAG_SERVER, SPEC_ROUTER_SERVER
 
 TEMPLATE_RUNTIME_PAIRS = {
     "AGENT_SERVER": (AGENT_SERVER, ROOT / "agent" / "server.py"),
+    "AGENT_HTTP_API": (AGENT_HTTP_API, ROOT / "agent" / "http_api.py"),
     "RAG_SERVER": (RAG_SERVER, ROOT / "rag" / "server.py"),
     "SPEC_ROUTER_SERVER": (SPEC_ROUTER_SERVER, ROOT / "spec_router" / "server.py"),
     "EMBED_QUEUE_SERVER": (EMBED_QUEUE_SERVER, ROOT / "embedding_queue" / "server.py"),

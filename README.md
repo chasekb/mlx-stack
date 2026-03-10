@@ -528,6 +528,20 @@ Recent agent schemas modularization progress extracted tool contract constants i
 `agent/server.py` now delegates tool allowlist and schema contract constants to this module while preserving
 existing `/tools` response shape and tool dispatch guard behavior used by tests and runtime call paths.
 
+Recent agent HTTP API modularization progress extracted HTTP handler transport/orchestration into:
+
+- `agent/http_api.py` (handler factory + endpoint routing for `/metrics`, `/tools`, `/runs/<id>`, `/retrieve`, `/health`, and `POST /agent/run`)
+
+`agent/server.py` now delegates handler construction to this module via `http_api.build_handler(...)` while preserving
+existing wrapper exports/constants used by tests and runtime call paths.
+
+Template/runtime parity and init scaffolding were updated accordingly:
+
+- `AGENT_HTTP_API` added to `ai_dev/templates/service_templates.py`
+- exported via `ai_dev/templates/__init__.py`
+- emitted by `ai-dev init` in `ai_dev/cli.py`
+- validated by `tools/check_template_parity.py`.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
