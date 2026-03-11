@@ -45,7 +45,8 @@ REQUIRED_HANDLER_KEYS = (
 def validate_command_handlers(handlers: Mapping[str, CommandHandler]) -> None:
     missing = [key for key in REQUIRED_HANDLER_KEYS if key not in handlers]
     extra = sorted(key for key in handlers.keys() if key not in REQUIRED_HANDLER_KEYS)
-    if not missing and not extra:
+    non_callable = sorted(key for key in REQUIRED_HANDLER_KEYS if key in handlers and not callable(handlers[key]))
+    if not missing and not extra and not non_callable:
         return
 
     problems = []
@@ -53,6 +54,8 @@ def validate_command_handlers(handlers: Mapping[str, CommandHandler]) -> None:
         problems.append(f"missing: {', '.join(missing)}")
     if extra:
         problems.append(f"unexpected: {', '.join(extra)}")
+    if non_callable:
+        problems.append(f"non-callable: {', '.join(non_callable)}")
     raise ValueError("Invalid command handlers map: " + "; ".join(problems))
 
 

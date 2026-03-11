@@ -37,6 +37,15 @@ class TestCommandGroupsValidation(unittest.TestCase):
 
         self.assertIn("unexpected: command_unexpected", str(ctx.exception))
 
+    def test_validate_command_handlers_rejects_non_callable_values(self) -> None:
+        handlers = _build_handlers()
+        handlers["command_status"] = None  # type: ignore[assignment]
+
+        with self.assertRaises(ValueError) as ctx:
+            command_groups.validate_command_handlers(handlers)
+
+        self.assertIn("non-callable: command_status", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

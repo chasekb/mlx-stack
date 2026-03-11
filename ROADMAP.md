@@ -786,4 +786,6 @@ following items remain incomplete for production-grade behavior.
   - valid complete mapping acceptance
   - missing-key rejection
   - unexpected-key rejection.
+- Extended handler-map validation to reject non-callable handler values and raise a clear error path (`non-callable: ...`).
+- Extended `tests/test_command_groups.py` with a non-callable handler-value rejection case.
 - This hardens the CLI/parser integration contract and reduces risk of silent handler wiring drift while preserving existing CLI command behavior.

@@ -631,6 +631,7 @@ missing/extra handler drift. Focused tests were added in `tests/test_command_gro
 - valid complete mapping acceptance
 - missing-key rejection
 - unexpected-key rejection
+- non-callable handler-value rejection
 
 ## CI Build (GitHub Actions + local)
 
