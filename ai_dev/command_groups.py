@@ -37,7 +37,9 @@ def register_all_commands(
     p_index.add_argument("--top-terms-per-file", type=int, default=20)
     p_index.add_argument("--top-terms-global", type=int, default=100)
     p_index.add_argument("--chunk-lines", type=int, default=80, help="Lines per retrieval chunk")
-    handlers["configure_index_mode_args"](p_index)
+    mode_group = p_index.add_mutually_exclusive_group()
+    mode_group.add_argument("--once", action="store_true", help="Run one incremental indexing pass")
+    mode_group.add_argument("--daemon", action="store_true", help="Continuously run incremental indexing")
     p_index.add_argument("--interval", type=float, default=2.0, help="Daemon polling interval in seconds")
     p_index.add_argument(
         "--install-git-hooks",

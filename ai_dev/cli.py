@@ -223,13 +223,6 @@ def command_index(args: argparse.Namespace) -> int:
     )
 
 
-def _configure_index_mode_args(p_index: argparse.ArgumentParser) -> None:
-    mode_group = p_index.add_mutually_exclusive_group()
-    mode_group.add_argument("--once", action="store_true", help="Run one incremental indexing pass")
-    mode_group.add_argument("--daemon", action="store_true", help="Continuously run incremental indexing")
-    return 0
-
-
 def _safe_int(value: object, default: int = 0) -> int:
     return core_retrieval.safe_int(value, default=default)
 
@@ -356,7 +349,6 @@ def build_parser() -> argparse.ArgumentParser:
             "command_down": command_down,
             "command_status": command_status,
             "command_pull_models": command_pull_models,
-            "configure_index_mode_args": _configure_index_mode_args,
             "command_index": command_index,
             "command_retrieve": command_retrieve,
             "command_configure_cursor": command_configure_cursor,

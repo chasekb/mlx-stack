@@ -592,6 +592,12 @@ Recent CLI config/init modularization progress extracted configuration and initi
 `ai_dev/cli.py` now delegates config/init wrappers to these modules while preserving
 existing command contracts, generated output behavior, and compatibility with current call paths.
 
+Recent CLI index-mode argparse modularization progress consolidated parser ownership into command groups:
+
+- `ai_dev/command_groups.py` now directly defines index mode flags (`--once`, `--daemon`) as part of index command wiring.
+
+`ai_dev/cli.py` no longer carries the index-mode argparse callback wrapper and now delegates this parser wiring concern entirely to `register_all_commands(...)`.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

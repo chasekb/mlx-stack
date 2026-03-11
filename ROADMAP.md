@@ -740,3 +740,11 @@ following items remain incomplete for production-grade behavior.
   - `command_init(...)` file-generation and config-write flow.
 - Updated `ai_dev/cli.py` to delegate config and init wrappers to `ai_dev.core.config_ops` / `ai_dev.core.init_ops` while preserving command contracts and compatibility with existing tests/callers.
 - This further narrows top-level orchestration in `ai_dev/cli.py` and advances F.1 toward full modularization completion.
+
+#### F completion notes (CLI index-mode argparse wiring tranche)
+
+- Updated `ai_dev/command_groups.py` to own index mode argparse wiring directly:
+  - `--once`
+  - `--daemon`.
+- Removed the now-redundant index mode callback wrapper from `ai_dev/cli.py` (`_configure_index_mode_args`) and dropped its handler injection from `register_all_commands(...)` wiring.
+- This further reduces parser-definition coupling in `ai_dev/cli.py` and continues F.1 command-group ownership consolidation.
