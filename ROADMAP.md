@@ -775,3 +775,15 @@ following items remain incomplete for production-grade behavior.
   - `command_embed_enqueue(...)`
   - `command_embed_stats(...)`.
 - This trims unused wrapper surface in `ai_dev/cli.py` and advances F.1 coupling-reduction with no command behavior changes.
+
+#### F completion notes (CLI handler-map runtime validation tranche)
+
+- Added explicit runtime validation in `ai_dev/command_groups.py` for parser handler wiring:
+  - `REQUIRED_HANDLER_KEYS` defines the canonical command handler key set.
+  - `validate_command_handlers(...)` checks for missing/unexpected keys and raises a clear `ValueError` when mismatched.
+- Updated `register_all_commands(...)` to call `validate_command_handlers(...)` before parser/subcommand registration.
+- Added focused unit coverage in `tests/test_command_groups.py` for:
+  - valid complete mapping acceptance
+  - missing-key rejection
+  - unexpected-key rejection.
+- This hardens the CLI/parser integration contract and reduces risk of silent handler wiring drift while preserving existing CLI command behavior.

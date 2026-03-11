@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Callable, TypedDict
+from typing import Callable, Mapping, TypedDict
 
 
 CommandHandler = Callable[[argparse.Namespace], int]
@@ -24,11 +24,44 @@ class CommandHandlers(TypedDict):
     command_memory_explain: CommandHandler
 
 
+REQUIRED_HANDLER_KEYS = (
+    "command_init",
+    "command_up",
+    "command_down",
+    "command_status",
+    "command_pull_models",
+    "command_index",
+    "command_retrieve",
+    "command_configure_cursor",
+    "command_models",
+    "command_route_model",
+    "command_spec_decode",
+    "command_embed_enqueue",
+    "command_embed_stats",
+    "command_memory_explain",
+)
+
+
+def validate_command_handlers(handlers: Mapping[str, CommandHandler]) -> None:
+    missing = [key for key in REQUIRED_HANDLER_KEYS if key not in handlers]
+    extra = sorted(key for key in handlers.keys() if key not in REQUIRED_HANDLER_KEYS)
+    if not missing and not extra:
+        return
+
+    problems = []
+    if missing:
+        problems.append(f"missing: {', '.join(missing)}")
+    if extra:
+        problems.append(f"unexpected: {', '.join(extra)}")
+    raise ValueError("Invalid command handlers map: " + "; ".join(problems))
+
+
 def register_all_commands(
     parser: argparse.ArgumentParser,
     handlers: CommandHandlers,
     task_tag_aliases: dict[str, list[str]],
 ) -> None:
+    validate_command_handlers(handlers)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="Generate stack files and default config")

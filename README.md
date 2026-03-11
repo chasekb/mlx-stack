@@ -620,6 +620,18 @@ Remote command behavior remains delegated directly through `ai_dev/core/remote_o
 `spec-decode`, `embed-enqueue`, and `embed-stats`, reducing unused wrapper surface while preserving
 existing command contracts.
 
+Recent CLI handler-map hardening adds runtime validation for command wiring in:
+
+- `ai_dev/command_groups.py`
+
+The command registration layer now validates handler-map completeness/shape before parser wiring via
+`validate_command_handlers(...)` and a canonical `REQUIRED_HANDLER_KEYS` set, reducing risk of silent
+missing/extra handler drift. Focused tests were added in `tests/test_command_groups.py` to cover:
+
+- valid complete mapping acceptance
+- missing-key rejection
+- unexpected-key rejection
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
