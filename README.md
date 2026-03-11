@@ -612,6 +612,14 @@ Recent CLI runtime-ops modularization progress extracted low-level runtime helpe
 
 `ai_dev/cli.py` now delegates its `run(...)` and `write_file(...)` wrappers to this module while preserving existing call signatures and behavior across stack/index/init command flows.
 
+Recent CLI remote-wrapper cleanup progress removed redundant passthrough helpers from:
+
+- `ai_dev/cli.py` (`_tokenize_for_spec`, `_http_json`)
+
+Remote command behavior remains delegated directly through `ai_dev/core/remote_ops.py` for
+`spec-decode`, `embed-enqueue`, and `embed-stats`, reducing unused wrapper surface while preserving
+existing command contracts.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

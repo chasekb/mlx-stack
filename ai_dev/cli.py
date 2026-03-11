@@ -314,16 +314,8 @@ def command_models(args: argparse.Namespace) -> int:
     return core_model_ops.command_models(args, load_config_fn=load_config)
 
 
-def _tokenize_for_spec(text: str) -> list[str]:
-    return core_remote_ops.tokenize_for_spec(text)
-
-
 def command_spec_decode(args: argparse.Namespace) -> int:
     return core_remote_ops.command_spec_decode(args)
-
-
-def _http_json(method: str, url: str, payload: dict | None = None, timeout: float = 10.0) -> dict:
-    return core_remote_ops.http_json(method=method, url=url, payload=payload, timeout=timeout)
 
 
 def command_embed_enqueue(args: argparse.Namespace) -> int:

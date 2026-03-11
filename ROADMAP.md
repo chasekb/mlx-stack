@@ -764,3 +764,14 @@ following items remain incomplete for production-grade behavior.
   - `write_file(...)`.
 - Updated `ai_dev/cli.py` wrappers (`run`, `write_file`) to delegate to `ai_dev.core.runtime_ops` while preserving existing function names/signatures used by current command flows.
 - This further reduces utility-level coupling in `ai_dev/cli.py` and continues F.1 modularization progress toward production-grade completion.
+
+#### F completion notes (CLI remote-wrapper cleanup tranche)
+
+- Removed now-redundant remote utility wrappers from `ai_dev/cli.py`:
+  - `_tokenize_for_spec(...)`
+  - `_http_json(...)`.
+- Preserved remote command contracts by continuing direct CLI delegation to `ai_dev.core.remote_ops` for:
+  - `command_spec_decode(...)`
+  - `command_embed_enqueue(...)`
+  - `command_embed_stats(...)`.
+- This trims unused wrapper surface in `ai_dev/cli.py` and advances F.1 coupling-reduction with no command behavior changes.
