@@ -606,6 +606,12 @@ Recent CLI handler-contract hardening adds typed command wiring between CLI and 
 
 `register_all_commands(...)` now accepts `handlers: CommandHandlers`, tightening the integration contract with `ai_dev/cli.py` and reducing accidental key/signature drift risk.
 
+Recent CLI runtime-ops modularization progress extracted low-level runtime helpers into:
+
+- `ai_dev/core/runtime_ops.py` (`run_command`, `write_file`)
+
+`ai_dev/cli.py` now delegates its `run(...)` and `write_file(...)` wrappers to this module while preserving existing call signatures and behavior across stack/index/init command flows.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

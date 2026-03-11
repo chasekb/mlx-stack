@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -16,6 +15,7 @@ from ai_dev.core import model_ops as core_model_ops
 from ai_dev.core import remote_ops as core_remote_ops
 from ai_dev.core import retrieve_ops as core_retrieve_ops
 from ai_dev.core import retrieval as core_retrieval
+from ai_dev.core import runtime_ops as core_runtime_ops
 from ai_dev.core import stack_ops as core_stack_ops
 from ai_dev.command_groups import register_all_commands
 from ai_dev.templates import (
@@ -60,16 +60,11 @@ TASK_TAG_ALIASES = core_config_ops.TASK_TAG_ALIASES
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> int:
-    proc = subprocess.run(cmd, cwd=cwd)
-    return proc.returncode
+    return core_runtime_ops.run_command(cmd, cwd=cwd)
 
 
 def write_file(path: Path, content: str, executable: bool = False) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-    if executable:
-        current_mode = path.stat().st_mode
-        path.chmod(current_mode | 0o111)
+    core_runtime_ops.write_file(path, content, executable=executable)
 
 
 def load_config() -> dict:

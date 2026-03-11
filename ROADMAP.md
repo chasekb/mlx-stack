@@ -756,3 +756,11 @@ following items remain incomplete for production-grade behavior.
   - `CommandHandlers` `TypedDict` covering all registered CLI handlers.
 - Updated `register_all_commands(...)` to accept `handlers: CommandHandlers` instead of an untyped mapping.
 - This improves interface clarity between `ai_dev/cli.py` and `ai_dev/command_groups.py`, reduces accidental key/signature drift risk, and advances F.1 production-grade hardening.
+
+#### F completion notes (CLI runtime-ops extraction tranche)
+
+- Added `ai_dev/core/runtime_ops.py` to centralize lightweight runtime helper operations used by CLI wrappers:
+  - `run_command(...)`
+  - `write_file(...)`.
+- Updated `ai_dev/cli.py` wrappers (`run`, `write_file`) to delegate to `ai_dev.core.runtime_ops` while preserving existing function names/signatures used by current command flows.
+- This further reduces utility-level coupling in `ai_dev/cli.py` and continues F.1 modularization progress toward production-grade completion.
