@@ -748,3 +748,11 @@ following items remain incomplete for production-grade behavior.
   - `--daemon`.
 - Removed the now-redundant index mode callback wrapper from `ai_dev/cli.py` (`_configure_index_mode_args`) and dropped its handler injection from `register_all_commands(...)` wiring.
 - This further reduces parser-definition coupling in `ai_dev/cli.py` and continues F.1 command-group ownership consolidation.
+
+#### F completion notes (CLI handler contract typing tranche)
+
+- Added explicit command-handler typing in `ai_dev/command_groups.py`:
+  - `CommandHandler = Callable[[argparse.Namespace], int]`
+  - `CommandHandlers` `TypedDict` covering all registered CLI handlers.
+- Updated `register_all_commands(...)` to accept `handlers: CommandHandlers` instead of an untyped mapping.
+- This improves interface clarity between `ai_dev/cli.py` and `ai_dev/command_groups.py`, reduces accidental key/signature drift risk, and advances F.1 production-grade hardening.

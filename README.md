@@ -598,6 +598,14 @@ Recent CLI index-mode argparse modularization progress consolidated parser owner
 
 `ai_dev/cli.py` no longer carries the index-mode argparse callback wrapper and now delegates this parser wiring concern entirely to `register_all_commands(...)`.
 
+Recent CLI handler-contract hardening adds typed command wiring between CLI and command groups:
+
+- `ai_dev/command_groups.py` now defines:
+  - `CommandHandler = Callable[[argparse.Namespace], int]`
+  - `CommandHandlers` `TypedDict` for all registered command keys.
+
+`register_all_commands(...)` now accepts `handlers: CommandHandlers`, tightening the integration contract with `ai_dev/cli.py` and reducing accidental key/signature drift risk.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

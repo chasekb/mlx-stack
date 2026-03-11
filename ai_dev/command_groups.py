@@ -1,11 +1,32 @@
 from __future__ import annotations
 
 import argparse
+from typing import Callable, TypedDict
+
+
+CommandHandler = Callable[[argparse.Namespace], int]
+
+
+class CommandHandlers(TypedDict):
+    command_init: CommandHandler
+    command_up: CommandHandler
+    command_down: CommandHandler
+    command_status: CommandHandler
+    command_pull_models: CommandHandler
+    command_index: CommandHandler
+    command_retrieve: CommandHandler
+    command_configure_cursor: CommandHandler
+    command_models: CommandHandler
+    command_route_model: CommandHandler
+    command_spec_decode: CommandHandler
+    command_embed_enqueue: CommandHandler
+    command_embed_stats: CommandHandler
+    command_memory_explain: CommandHandler
 
 
 def register_all_commands(
     parser: argparse.ArgumentParser,
-    handlers: dict[str, object],
+    handlers: CommandHandlers,
     task_tag_aliases: dict[str, list[str]],
 ) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
