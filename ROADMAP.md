@@ -388,7 +388,7 @@ following items remain incomplete for production-grade behavior.
 - [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
   - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
 - [ ] **F.3/F.4 Architecture boundary completion**
-  - `agent/server.py` internals were split into focused modules, and HTTP-handler decomposition is now completed via `agent/http_api.py`; broader service-layer boundary formalization remains to be fully completed.
+  - `agent/server.py` internals were split into focused modules, and HTTP-handler decomposition is now completed via `agent/http_api.py`; handler-context contract formalization is now added via `agent/contracts.py`, while broader service-layer boundary formalization remains to be fully completed.
 
 ### A) Agent mutation path hardening
 
@@ -813,3 +813,15 @@ following items remain incomplete for production-grade behavior.
 - Extended handler-map validation to reject non-callable handler values and raise a clear error path (`non-callable: ...`).
 - Extended `tests/test_command_groups.py` with a non-callable handler-value rejection case.
 - This hardens the CLI/parser integration contract and reduces risk of silent handler wiring drift while preserving existing CLI command behavior.
+
+#### F completion notes (agent HTTP context contract tranche)
+
+- Added `agent/contracts.py` to formalize the HTTP handler dependency contract:
+  - `AgentHttpContext` `TypedDict` for required context shape
+  - `validate_agent_http_context(...)` runtime guard for missing/non-callable context entries.
+- Updated `agent/http_api.py` to validate and cast context at `build_handler(...)` boundary, making dependency assumptions explicit and failing fast on malformed wiring.
+- Updated `agent/server.py` to construct a typed `HANDLER_CONTEXT: AgentHttpContext` before passing to `http_api.build_handler(...)`.
+- Added focused tests in `tests/test_agent_http_api.py` covering:
+  - valid context acceptance
+  - missing required key rejection
+  - non-callable dependency rejection.

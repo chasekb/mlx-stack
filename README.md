@@ -544,6 +544,15 @@ Template/runtime parity and init scaffolding were updated accordingly:
 - emitted by `ai-dev init` in `ai_dev/cli.py`
 - validated by `tools/check_template_parity.py`.
 
+Recent agent HTTP context-contract hardening progress formalized handler wiring boundaries into:
+
+- `agent/contracts.py` (`AgentHttpContext` + `validate_agent_http_context(...)`)
+
+`agent/http_api.py` now validates handler context at `build_handler(...)` construction time,
+and `agent/server.py` now builds a typed `HANDLER_CONTEXT` before handler construction.
+Focused coverage in `tests/test_agent_http_api.py` verifies valid context acceptance plus
+missing-key and non-callable dependency rejection.
+
 Recent template-source unification progress further reduced duplication by making
 `ai_dev/templates/service_templates.py` load template constants from canonical
 repository files (e.g., `agent/server.py`, `embedding_worker/worker.py`,

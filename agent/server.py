@@ -8,6 +8,7 @@ from typing import Optional
 from http.server import HTTPServer
 
 from agent import cache_kv
+from agent.contracts import AgentHttpContext
 from agent import http_api
 from agent import observability
 from agent import retrieval
@@ -222,31 +223,32 @@ def run_agent_task(payload: dict) -> dict:
     )
 
 
-Handler = http_api.build_handler(
-    {
-        "load_metrics": load_metrics,
-        "load_kv_cache": load_kv_cache,
-        "parse_alert_thresholds": parse_alert_thresholds,
-        "compute_alerts": compute_alerts,
-        "emit_event": emit_event,
-        "tool_schemas": TOOL_SCHEMAS,
-        "runs_dir": RUNS_DIR,
-        "ensure_under_root": ensure_under_root,
-        "index_path": INDEX_PATH,
-        "retrieve": retrieve,
-        "default_kv_model_budget_tokens": DEFAULT_KV_MODEL_BUDGET_TOKENS,
-        "default_cache_ttl_seconds": DEFAULT_CACHE_TTL_SECONDS,
-        "compute_cache_namespace": compute_cache_namespace,
-        "compute_cache_key": compute_cache_key,
-        "get_kv_reuse_status": get_kv_reuse_status,
-        "load_cache": load_cache,
-        "save_cache": save_cache,
-        "get_cache_entry": get_cache_entry,
-        "set_cache_entry": set_cache_entry,
-        "run_agent_task": run_agent_task,
-        "record_cache_metrics": record_cache_metrics,
-    }
-)
+HANDLER_CONTEXT: AgentHttpContext = {
+    "load_metrics": load_metrics,
+    "load_kv_cache": load_kv_cache,
+    "parse_alert_thresholds": parse_alert_thresholds,
+    "compute_alerts": compute_alerts,
+    "emit_event": emit_event,
+    "tool_schemas": TOOL_SCHEMAS,
+    "runs_dir": RUNS_DIR,
+    "ensure_under_root": ensure_under_root,
+    "index_path": INDEX_PATH,
+    "retrieve": retrieve,
+    "default_kv_model_budget_tokens": DEFAULT_KV_MODEL_BUDGET_TOKENS,
+    "default_cache_ttl_seconds": DEFAULT_CACHE_TTL_SECONDS,
+    "compute_cache_namespace": compute_cache_namespace,
+    "compute_cache_key": compute_cache_key,
+    "get_kv_reuse_status": get_kv_reuse_status,
+    "load_cache": load_cache,
+    "save_cache": save_cache,
+    "get_cache_entry": get_cache_entry,
+    "set_cache_entry": set_cache_entry,
+    "run_agent_task": run_agent_task,
+    "record_cache_metrics": record_cache_metrics,
+}
+
+
+Handler = http_api.build_handler(HANDLER_CONTEXT)
 
 
 if __name__ == '__main__':

@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 import time
 from http.server import BaseHTTPRequestHandler
+from typing import Mapping, cast
 from urllib.parse import parse_qs, urlparse
 
+from agent.contracts import AgentHttpContext, validate_agent_http_context
 
-def build_handler(context: dict):
+
+def build_handler(context: Mapping[str, object]):
+    validate_agent_http_context(context)
+    context = cast(AgentHttpContext, context)
+
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, payload, status=200):
             self.send_response(status)
