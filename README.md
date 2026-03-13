@@ -372,15 +372,14 @@ The explain command returns per-result score components (`score_breakdown`) for:
 
 ### 15) Shared KV cache (Milestone 9)
 
-The agent service now includes a lightweight shared KV-cache simulation for
+The agent service now supports backend-driven KV reuse probing for
 session-aware prefix reuse across related requests.
 
 Key capabilities:
 
 - tenant/session/model isolation
-- prefix-boundary validation (reuse only when new prefix extends prior prefix)
 - prefix hash validation (`prefix_hash`)
-- per-model token budget with LRU-style eviction
+- backend KV signal integration (from backend `kv_cache` status when present, or `usage.prompt_tokens_details.cached_tokens`)
 
 `POST /agent/run` now accepts optional `kv_cache` settings:
 
@@ -401,12 +400,13 @@ Key capabilities:
 }
 ```
 
-Response includes a `kv_cache` block with status and reason:
+Response includes a `kv_cache` block with backend-derived status and reason:
 
-- `hit` (prefix extension reuse)
-- `miss` (cold start or boundary mismatch)
+- `hit` (backend indicates reusable cached tokens/KV)
+- `miss` (backend indicates no reusable cached tokens/KV)
 - `bypass` (missing session/prefix)
 - `rejected` (hash mismatch)
+- `error` (backend probe failed/unreachable)
 
 Metrics now include KV summaries:
 
@@ -417,6 +417,8 @@ curl "http://localhost:8091/metrics"
 Local KV state is stored in:
 
 - `.ai-dev/kv_cache.json`
+
+Backend probe endpoint defaults to `http://localhost:4000/v1/completions` and can be overridden per request with `kv_cache.backend_url` (or via `AGENT_KV_BACKEND_URL`).
 
 ### 16) Observability events and alert thresholds (D residual hardening)
 

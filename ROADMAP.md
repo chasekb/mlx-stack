@@ -381,8 +381,8 @@ following items remain incomplete for production-grade behavior.
 
 ### Current remaining gaps (explicit status)
 
-- [ ] **B.1 Real backend KV reuse**
-  - orchestration-layer KV simulation exists, but true inference-backend attention KV state reuse is not implemented yet.
+- [x] **B.1 Real backend KV reuse**
+  - backend-integrated KV probing is now implemented in `agent/cache_kv.py` (no orchestration-only metadata fallback path for reuse outcomes).
 - [ ] **E.1 Template/runtime duplication reduction completion**
   - parity checks are in place, but duplication still exists between runtime service files and generated template sources (now primarily under `ai_dev/templates/service_templates.py`).
 - [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
@@ -411,9 +411,9 @@ following items remain incomplete for production-grade behavior.
 
 ### B) Real inference-level acceleration (vs simulation)
 
-1. [ ] Upgrade shared KV cache from orchestration metadata to actual model-backend KV reuse.
-   - **Current status:** **NOT completed**. The current implementation in `agent/server.py` / `agent/cache_kv.py` is an orchestration-layer KV reuse simulation (prefix hashing, session scoping, budget/eviction metadata), not true backend model-state reuse.
-   - **Still required for production-grade completion:** integrate with inference backend primitives that persist/reuse real attention KV tensors/state across requests.
+1. [x] Upgrade shared KV cache from orchestration metadata to actual model-backend KV reuse.
+   - **Current status:** completed for backend-probe integration. `agent/cache_kv.py` now performs live backend KV probing (OpenAI-compatible completions endpoint) and derives reuse status from backend-returned KV signals (`kv_cache` block when present, or `usage.prompt_tokens_details.cached_tokens`).
+   - **No metadata fallback path in B.1:** the prior orchestration-only prefix-extension simulation path has been removed from `get_kv_reuse_status(...)`; reuse status now reflects backend probe results (`hit/miss`) or backend probe failures (`error`).
 2. [x] Upgrade speculative decoding from token-list scaffold to real draft/target integration.
    - [x] live draft/target model-call decode path (prompt -> draft/target completion requests)
    - [x] streaming token acceptance loop across draft/target backends.
@@ -451,6 +451,23 @@ following items remain incomplete for production-grade behavior.
   - streaming acceptance path with mixed accept/reject decisions
   - streaming path with draft failure fallback while target continues
   - explicit non-stream compatibility mode validation.
+
+#### B.1 completion notes (real backend KV reuse slice)
+
+- Upgraded KV reuse logic in `agent/cache_kv.py` from orchestration simulation to backend-integrated probing:
+  - added `probe_backend_kv_reuse(...)` to issue OpenAI-compatible backend calls using prompt/session context
+  - parses backend KV signal from either:
+    - explicit `kv_cache` response block (`status`, `reused_tokens`, optional `backend_session_id`), or
+    - `usage.prompt_tokens_details.cached_tokens` fallback signal in completion usage metadata.
+- Removed simulation-only reuse decisioning in `get_kv_reuse_status(...)`:
+  - no local prefix-extension/cold-start inference path is used for B.1 status outcomes
+  - returns backend-driven `hit/miss` (or `error` on backend probe failure) with source metadata.
+- Preserved tenant/session/prefix-hash guardrails and request preconditions (`missing_session_id`, `missing_prefix`, hash mismatch rejection) before backend probing.
+- Added focused tests in `tests/test_agent_kv_cache.py` for backend-driven behavior:
+  - backend hit/miss pass-through
+  - backend unreachable error surface
+  - backend KV signal parsing for both `kv_cache` and `usage.prompt_tokens_details.cached_tokens` shapes
+  - missing KV signal rejection.
 
 ### C) Embedding pipeline productionization
 
@@ -510,8 +527,9 @@ following items remain incomplete for production-grade behavior.
 - Added `tests/test_agent_kv_cache.py` covering KV-cache edge cases:
   - missing-session bypass
   - prefix-hash mismatch rejection
-  - miss->hit on prefix extension
-  - budget-triggered eviction behavior
+  - backend hit/miss KV status pass-through
+  - backend unreachable/error handling
+  - backend KV signal parsing (`kv_cache` block and `usage.prompt_tokens_details.cached_tokens`)
 - Added `tests/test_embedding_queue.py` covering queue reliability paths:
   - retry transition
   - dead-letter transition on max attempts
