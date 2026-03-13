@@ -383,8 +383,8 @@ following items remain incomplete for production-grade behavior.
 
 - [x] **B.1 Real backend KV reuse**
   - backend-integrated KV probing is now implemented in `agent/cache_kv.py` (no orchestration-only metadata fallback path for reuse outcomes).
-- [ ] **E.1 Template/runtime duplication reduction completion**
-  - parity checks are in place, but duplication still exists between runtime service files and generated template sources (now primarily under `ai_dev/templates/service_templates.py`).
+- [x] **E.1 Template/runtime duplication reduction completion**
+  - template constants are now sourced from canonical runtime/template files, removing duplicated embedded service template literals in `ai_dev/templates/service_templates.py`.
 - [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
   - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
 - [ ] **F.3/F.4 Architecture boundary completion**
@@ -521,6 +521,12 @@ following items remain incomplete for production-grade behavior.
   - embedded `AGENT_SERVER` template in `ai_dev/cli.py`
 - Integrated parity validation into CI (`.github/workflows/build.yml`).
 - Added `tests/test_agent_write_patch.py` and wired unit-test execution in CI.
+
+#### E.1 completion notes (template-source unification tranche)
+
+- Updated `ai_dev/templates/service_templates.py` to load template constants from canonical repository files via `Path`-based reads, rather than storing duplicated multi-hundred-line embedded literals.
+- This removes the primary remaining duplication surface between runtime service files and template constants while preserving existing `ai_dev.templates` import contracts used by `ai_dev/cli.py`.
+- Existing parity enforcement (`tools/check_template_parity.py`) remains in place as a guardrail in validation/CI flows.
 
 #### D completion notes (testing slice)
 

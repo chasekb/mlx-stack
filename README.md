@@ -544,6 +544,12 @@ Template/runtime parity and init scaffolding were updated accordingly:
 - emitted by `ai-dev init` in `ai_dev/cli.py`
 - validated by `tools/check_template_parity.py`.
 
+Recent template-source unification progress further reduced duplication by making
+`ai_dev/templates/service_templates.py` load template constants from canonical
+repository files (e.g., `agent/server.py`, `embedding_worker/worker.py`,
+`podman-compose.yml`) instead of maintaining duplicated embedded multiline
+template literals.
+
 Recent CLI parser modularization progress extracted command registration into:
 
 - `ai_dev/command_groups.py` (centralized subcommand wiring and argparse option definitions)
