@@ -388,7 +388,7 @@ following items remain incomplete for production-grade behavior.
 - [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
   - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
 - [ ] **F.3/F.4 Architecture boundary completion**
-  - `agent/server.py` internals were split into focused modules, and HTTP-handler decomposition is now completed via `agent/http_api.py`; handler-context contract formalization is now added via `agent/contracts.py`, while broader service-layer boundary formalization remains to be fully completed.
+  - `agent/server.py` internals were split into focused modules, and HTTP-handler decomposition is now completed via `agent/http_api.py`; handler-context contract formalization is now added via `agent/contracts.py`, and agent-run response orchestration was extracted to `agent/http_service.py`; broader service-layer boundary formalization remains to be fully completed.
 
 ### A) Agent mutation path hardening
 
@@ -831,3 +831,19 @@ following items remain incomplete for production-grade behavior.
 - Added `build_parser(...)` in `ai_dev/command_groups.py` so command-groups own parser construction in addition to command wiring.
 - Updated `ai_dev/cli.py` `build_parser()` to delegate directly to `ai_dev.command_groups.build_parser(...)`.
 - This further reduces parser-construction coupling in `ai_dev/cli.py` while preserving all existing CLI command contracts and handler wiring behavior.
+
+#### F completion notes (agent HTTP service extraction tranche)
+
+- Added `agent/http_service.py` to centralize `POST /agent/run` response orchestration (`build_agent_run_response(...)`):
+  - cache config parsing and TTL clamping
+  - cache hit/miss decisioning
+  - task fallback execution
+  - cache metrics recording
+  - response payload assembly.
+- Updated `agent/http_api.py` `do_POST` flow to delegate run-response orchestration to `agent.http_service.build_agent_run_response(...)`.
+- Extended template/init/parity wiring for extracted service module:
+  - added `AGENT_HTTP_SERVICE` in `ai_dev/templates/service_templates.py`
+  - exported in `ai_dev/templates/__init__.py`
+  - emitted by `ai_dev/cli.py` during `ai-dev init`
+  - included in `tools/check_template_parity.py`.
+- Added focused tests in `tests/test_agent_http_service.py` covering cache-hit, cache-miss/set-entry, and TTL clamping behavior.

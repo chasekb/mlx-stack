@@ -553,6 +553,14 @@ and `agent/server.py` now builds a typed `HANDLER_CONTEXT` before handler constr
 Focused coverage in `tests/test_agent_http_api.py` verifies valid context acceptance plus
 missing-key and non-callable dependency rejection.
 
+Recent agent HTTP service-layer extraction further reduced transport/runtime coupling by adding:
+
+- `agent/http_service.py` (`build_agent_run_response(...)`) to centralize `/agent/run` cache + execution orchestration.
+
+`agent/http_api.py` now delegates POST run-response logic to this service layer. Template/init/parity wiring
+was updated for `agent/http_service.py`, and focused tests in `tests/test_agent_http_service.py` now cover
+cache-hit, cache-miss/set-entry, and TTL clamping behavior.
+
 Recent template-source unification progress further reduced duplication by making
 `ai_dev/templates/service_templates.py` load template constants from canonical
 repository files (e.g., `agent/server.py`, `embedding_worker/worker.py`,
