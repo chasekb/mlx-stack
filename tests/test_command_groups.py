@@ -46,6 +46,22 @@ class TestCommandGroupsValidation(unittest.TestCase):
 
         self.assertIn("non-callable: command_status", str(ctx.exception))
 
+    def test_build_parser_sets_subcommand_handler(self) -> None:
+        parser = command_groups.build_parser(
+            handlers=_build_handlers(),
+            task_tag_aliases={
+                "default": ["default"],
+                "analysis": ["analysis"],
+                "fast": ["fast"],
+                "longctx": ["longctx"],
+                "quality": ["quality"],
+            },
+        )
+
+        args = parser.parse_args(["status"])
+        self.assertEqual(args.command, "status")
+        self.assertIs(args.func, _ok_handler)
+
 
 if __name__ == "__main__":
     unittest.main()

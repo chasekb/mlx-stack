@@ -185,3 +185,12 @@ def register_all_commands(
     p_memory_explain.add_argument("--no-changed-bias", action="store_true", help="Disable bias toward changed git files")
     p_memory_explain.add_argument("--json", action="store_true")
     p_memory_explain.set_defaults(func=handlers["command_memory_explain"])
+
+
+def build_parser(
+    handlers: CommandHandlers,
+    task_tag_aliases: dict[str, list[str]],
+) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="ai-dev", description="Local AI dev stack orchestration CLI")
+    register_all_commands(parser, handlers=handlers, task_tag_aliases=task_tag_aliases)
+    return parser

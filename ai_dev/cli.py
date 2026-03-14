@@ -17,7 +17,7 @@ from ai_dev.core import retrieve_ops as core_retrieve_ops
 from ai_dev.core import retrieval as core_retrieval
 from ai_dev.core import runtime_ops as core_runtime_ops
 from ai_dev.core import stack_ops as core_stack_ops
-from ai_dev.command_groups import register_all_commands
+from ai_dev.command_groups import build_parser as build_command_groups_parser
 from ai_dev.templates import (
     AGENT_HTTP_API,
     AGENT_SERVER,
@@ -327,9 +327,7 @@ def command_embed_stats(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ai-dev", description="Local AI dev stack orchestration CLI")
-    register_all_commands(
-        parser,
+    return build_command_groups_parser(
         handlers={
             "command_init": command_init,
             "command_up": command_up,
@@ -348,8 +346,6 @@ def build_parser() -> argparse.ArgumentParser:
         },
         task_tag_aliases=TASK_TAG_ALIASES,
     )
-
-    return parser
 
 
 def main(argv: list[str] | None = None) -> int:

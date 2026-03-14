@@ -825,3 +825,9 @@ following items remain incomplete for production-grade behavior.
   - valid context acceptance
   - missing required key rejection
   - non-callable dependency rejection.
+
+#### F completion notes (CLI parser-factory ownership tranche)
+
+- Added `build_parser(...)` in `ai_dev/command_groups.py` so command-groups own parser construction in addition to command wiring.
+- Updated `ai_dev/cli.py` `build_parser()` to delegate directly to `ai_dev.command_groups.build_parser(...)`.
+- This further reduces parser-construction coupling in `ai_dev/cli.py` while preserving all existing CLI command contracts and handler wiring behavior.

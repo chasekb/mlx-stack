@@ -566,6 +566,13 @@ Recent CLI parser modularization progress extracted command registration into:
 `ai_dev/cli.py` now delegates parser/subcommand construction via `register_all_commands(...)` while preserving
 existing command handler functions and CLI behavior.
 
+Recent parser-factory ownership progress further moved parser construction into command groups:
+
+- `ai_dev/command_groups.py` now exposes `build_parser(...)` that constructs the root parser and registers all commands.
+
+`ai_dev/cli.py` `build_parser()` now delegates directly to `ai_dev.command_groups.build_parser(...)`,
+reducing parser-construction coupling in CLI while preserving command contracts and handler wiring behavior.
+
 Recent CLI remote-ops modularization progress extracted remote command helpers into:
 
 - `ai_dev/core/remote_ops.py` (spec decode command flow, embed queue enqueue/stats flows, shared HTTP JSON helper)
