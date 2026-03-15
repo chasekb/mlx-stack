@@ -847,3 +847,15 @@ following items remain incomplete for production-grade behavior.
   - emitted by `ai_dev/cli.py` during `ai-dev init`
   - included in `tools/check_template_parity.py`.
 - Added focused tests in `tests/test_agent_http_service.py` covering cache-hit, cache-miss/set-entry, and TTL clamping behavior.
+
+#### F completion notes (agent HTTP GET service extraction tranche)
+
+- Extended `agent/http_service.py` with GET endpoint orchestration helpers:
+  - `build_metrics_response(...)` for metrics/KV summary/alerts payload assembly
+  - `build_run_response(...)` for run-trace lookup and safe not-found handling
+  - `build_retrieve_response(...)` for retrieve endpoint validation and response assembly.
+- Updated `agent/http_api.py` GET routing to delegate `/metrics`, `/runs/<id>`, and `/retrieve` response construction to `agent.http_service`, reducing transport-layer orchestration coupling.
+- Added focused coverage in `tests/test_agent_http_service.py` for:
+  - metrics alert emission + KV model summarization
+  - run lookup success/not-found/root-guard behavior
+  - retrieve missing-index/missing-query/success paths and `top_k` clamping.

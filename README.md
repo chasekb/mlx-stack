@@ -561,6 +561,17 @@ Recent agent HTTP service-layer extraction further reduced transport/runtime cou
 was updated for `agent/http_service.py`, and focused tests in `tests/test_agent_http_service.py` now cover
 cache-hit, cache-miss/set-entry, and TTL clamping behavior.
 
+Recent agent HTTP GET service-layer extraction extended this transport/runtime decoupling by adding:
+
+- `agent/http_service.py` helpers for GET endpoint orchestration:
+  - `build_metrics_response(...)`
+  - `build_run_response(...)`
+  - `build_retrieve_response(...)`
+
+`agent/http_api.py` now delegates `/metrics`, `/runs/<id>`, and `/retrieve` response construction to
+`agent/http_service.py`, with focused service tests covering metrics alert emission/KV summaries,
+run lookup success/not-found handling, and retrieve validation plus `top_k` clamping behavior.
+
 Recent template-source unification progress further reduced duplication by making
 `ai_dev/templates/service_templates.py` load template constants from canonical
 repository files (e.g., `agent/server.py`, `embedding_worker/worker.py`,

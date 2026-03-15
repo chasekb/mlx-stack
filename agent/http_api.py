@@ -7,7 +7,12 @@ from typing import Mapping, cast
 from urllib.parse import parse_qs, urlparse
 
 from agent.contracts import AgentHttpContext, validate_agent_http_context
-from agent.http_service import build_agent_run_response
+from agent.http_service import (
+    build_agent_run_response,
+    build_metrics_response,
+    build_retrieve_response,
+    build_run_response,
+)
 
 
 def build_handler(context: Mapping[str, object]):
@@ -25,34 +30,8 @@ def build_handler(context: Mapping[str, object]):
             parsed = urlparse(self.path)
 
             if parsed.path == "/metrics":
-                metrics = context["load_metrics"]()
-                kv_obj = context["load_kv_cache"]()
-                kv_summary = {}
-                for model_name, store in kv_obj.get("models", {}).items():
-                    if not isinstance(store, dict):
-                        continue
-                    entries = store.get("entries", {}) if isinstance(store.get("entries", {}), dict) else {}
-                    kv_summary[model_name] = {
-                        "entries": len(entries),
-                        "used_tokens": int(store.get("used_tokens", 0)),
-                        "budget_tokens": int(
-                            store.get("budget_tokens", context["default_kv_model_budget_tokens"])
-                        ),
-                    }
-                thresholds = context["parse_alert_thresholds"]()
-                alerts = context["compute_alerts"](metrics, thresholds=thresholds)
-                if alerts:
-                    context["emit_event"]("alerts_emitted", alerts=alerts)
-                self._reply(
-                    {
-                        "ok": True,
-                        "service": "agent",
-                        "metrics": metrics,
-                        "kv_cache": {"models": kv_summary},
-                        "alerts": alerts,
-                        "alert_thresholds": thresholds,
-                    }
-                )
+                response_payload = build_metrics_response(context)
+                self._reply(response_payload)
                 return
 
             if parsed.path == "/tools":
@@ -61,35 +40,20 @@ def build_handler(context: Mapping[str, object]):
 
             if parsed.path.startswith("/runs/"):
                 run_id = parsed.path.split("/runs/", 1)[1].strip()
-                target = (context["runs_dir"] / f"{run_id}.json").resolve()
-                if not target.exists() or not target.is_file() or not context["ensure_under_root"](target):
-                    self._reply({"error": "run_not_found"}, status=404)
-                    return
-                payload = json.loads(target.read_text(encoding="utf-8"))
-                self._reply({"ok": True, "service": "agent", "run": payload})
+                response_payload, status = build_run_response(run_id, context)
+                self._reply(response_payload, status=status)
                 return
 
             if parsed.path == "/retrieve":
-                if not context["index_path"].exists():
-                    self._reply({"error": "missing_index", "detail": "Run `ai-dev index .` first."}, status=400)
-                    return
-
                 qs = parse_qs(parsed.query)
                 query = (qs.get("q", [""])[0] or "").strip()
-                if not query:
-                    self._reply({"error": "missing_query", "detail": "Provide q=<query>"}, status=400)
-                    return
-
                 try:
                     top_k = int((qs.get("top_k", ["5"])[0] or "5"))
                 except ValueError:
                     top_k = 5
-                top_k = max(1, min(top_k, 20))
                 path_prefix = (qs.get("path_prefix", [""])[0] or "").strip() or None
-
-                index_obj = json.loads(context["index_path"].read_text(encoding="utf-8"))
-                payload = context["retrieve"](index_obj, query=query, top_k=top_k, path_prefix=path_prefix)
-                self._reply({"ok": True, "service": "agent", "retrieval": payload})
+                response_payload, status = build_retrieve_response(query, top_k, path_prefix, context)
+                self._reply(response_payload, status=status)
                 return
 
             if parsed.path == "/health":

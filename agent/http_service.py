@@ -1,9 +1,66 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import Callable
 
 from agent.contracts import AgentHttpContext
+
+
+def build_metrics_response(context: AgentHttpContext) -> dict:
+    metrics = context["load_metrics"]()
+    kv_obj = context["load_kv_cache"]()
+    kv_summary = {}
+    for model_name, store in kv_obj.get("models", {}).items():
+        if not isinstance(store, dict):
+            continue
+        entries = store.get("entries", {}) if isinstance(store.get("entries", {}), dict) else {}
+        kv_summary[model_name] = {
+            "entries": len(entries),
+            "used_tokens": int(store.get("used_tokens", 0)),
+            "budget_tokens": int(store.get("budget_tokens", context["default_kv_model_budget_tokens"])),
+        }
+
+    thresholds = context["parse_alert_thresholds"]()
+    alerts = context["compute_alerts"](metrics, thresholds=thresholds)
+    if alerts:
+        context["emit_event"]("alerts_emitted", alerts=alerts)
+
+    return {
+        "ok": True,
+        "service": "agent",
+        "metrics": metrics,
+        "kv_cache": {"models": kv_summary},
+        "alerts": alerts,
+        "alert_thresholds": thresholds,
+    }
+
+
+def build_run_response(run_id: str, context: AgentHttpContext) -> tuple[dict, int]:
+    target = (context["runs_dir"] / f"{run_id}.json").resolve()
+    if not target.exists() or not target.is_file() or not context["ensure_under_root"](target):
+        return {"error": "run_not_found"}, 404
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    return {"ok": True, "service": "agent", "run": payload}, 200
+
+
+def build_retrieve_response(
+    query: str,
+    top_k: int,
+    path_prefix: str | None,
+    context: AgentHttpContext,
+) -> tuple[dict, int]:
+    if not context["index_path"].exists():
+        return {"error": "missing_index", "detail": "Run `ai-dev index .` first."}, 400
+
+    query = (query or "").strip()
+    if not query:
+        return {"error": "missing_query", "detail": "Provide q=<query>"}, 400
+
+    top_k = max(1, min(top_k, 20))
+    index_obj = json.loads(context["index_path"].read_text(encoding="utf-8"))
+    retrieval_payload = context["retrieve"](index_obj, query=query, top_k=top_k, path_prefix=path_prefix)
+    return {"ok": True, "service": "agent", "retrieval": retrieval_payload}, 200
 
 
 def build_agent_run_response(
