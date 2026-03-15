@@ -74,13 +74,15 @@ def command_pull_models(args, *, load_config_fn, python_executable: str, subproc
         cmd = [
             python_executable,
             "-m",
-            "mlx_lm.convert",
+            "mlx_lm",
+            "convert",
             "--hf-path",
             hf_model,
-            "--quantize",
-            q,
-            "--output-path",
+            "--mlx-path",
             output_path,
+            "--quantize",
+            "--q-bits",
+            q,
         ]
         commands.append((name, cmd))
 
