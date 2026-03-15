@@ -48,25 +48,50 @@ ai-dev init
 - `agent/server.py`
 - `.ai-dev/config.json`
 
-### 4) Start services
+### 4) Pull and quantize local models (required before inference)
+
+The stack does **not** auto-download models during `init`/`up`.
+Run `pull-models` to fetch configured Hugging Face models and convert them locally with MLX:
+
+```bash
+# See what will run (recommended first)
+ai-dev pull-models --dry-run
+
+# Pull/convert all configured profiles from .ai-dev/config.json
+ai-dev pull-models
+```
+
+Useful variants:
+
+```bash
+# Convert only one profile by name
+ai-dev pull-models --profile local-mlx
+
+# Override fallback model/quantization when profile fields are absent
+ai-dev pull-models --model Qwen/Qwen3.5-Coder-7B-Instruct --quantization 4
+```
+
+Without this step, local inference endpoints may start but won’t have converted local model artifacts to serve.
+
+### 5) Start services
 
 ```bash
 ai-dev up
 ```
 
-### 5) Generate Cursor-compatible API settings
+### 6) Generate Cursor-compatible API settings
 
 ```bash
 ai-dev configure-cursor
 ```
 
-### 6) Build local project index (lightweight)
+### 7) Build local project index (lightweight)
 
 ```bash
 ai-dev index .
 ```
 
-### 7) View configured model profiles
+### 8) View configured model profiles
 
 ```bash
 ai-dev models
@@ -74,7 +99,7 @@ ai-dev models
 
 This milestone enables multi-model configuration through `.ai-dev/config.json`, and `ai-dev init` now regenerates `litellm_config.yaml` from those model profiles.
 
-### 8) Route model selection by task tag
+### 9) Route model selection by task tag
 
 ```bash
 ai-dev route-model fast
@@ -90,7 +115,7 @@ ai-dev configure-cursor --task-tag fast
 
 Supported task tags: `default`, `quality`, `fast`, `longctx`, `analysis`.
 
-### 9) Retrieve repo-aware context
+### 10) Retrieve repo-aware context
 
 Build the index first:
 
@@ -117,7 +142,7 @@ The agent service also exposes retrieval over HTTP once running:
 curl "http://localhost:8091/retrieve?q=cursor%20config&top_k=5"
 ```
 
-### 9.1) Automatic incremental indexing (Milestone 4)
+### 10.1) Automatic incremental indexing (Milestone 4)
 
 You can now run incremental indexing without rebuilding everything each time:
 
@@ -141,7 +166,7 @@ This installs/updates `.git/hooks/post-checkout` and `.git/hooks/post-merge` to 
 python3 -m ai_dev.cli index --once .
 ```
 
-### 10) Function-calling agent loop (Milestone 3 foundation)
+### 11) Function-calling agent loop (Milestone 3 foundation)
 
 The agent service now exposes a JSON tool schema and task-run endpoint:
 
@@ -170,7 +195,7 @@ Run traces are saved to `.ai-dev/runs/<run_id>.json` and can be retrieved via:
 curl "http://localhost:8091/runs/<run_id>"
 ```
 
-### 11) Prompt caching + metrics (Milestone 5)
+### 12) Prompt caching + metrics (Milestone 5)
 
 The agent service now supports local prompt/result caching for `/agent/run`.
 
@@ -210,7 +235,7 @@ Local cache/metrics files are written under `.ai-dev/`:
 - `.ai-dev/prompt_cache.json`
 - `.ai-dev/metrics.json`
 
-### 12) Speculative decode foundation (Milestone 6)
+### 13) Speculative decode foundation (Milestone 6)
 
 This repo now includes a local `spec-router` service (optional profile) that can run
 a draft-vs-target token acceptance loop via HTTP.
@@ -281,7 +306,7 @@ In streaming acceptance mode, `spec-router` performs iterative one-token draft/t
 Compatibility mode remains available by setting `stream_loop: false` in the request body,
 which uses the previous full-completion compare behavior.
 
-### 13) Background embedding workers (Milestone 7)
+### 14) Background embedding workers (Milestone 7)
 
 This repo now includes a lightweight background embedding pipeline:
 
@@ -341,7 +366,7 @@ Worker metadata files:
 - `.ai-dev/embedding_schema.json`
 - `.ai-dev/embedding_migrations.jsonl`
 
-### 14) Git-aware code memory (Milestone 8)
+### 15) Git-aware code memory (Milestone 8)
 
 Retrieval now includes git-aware ranking signals in addition to lexical matching:
 
@@ -370,7 +395,7 @@ The explain command returns per-result score components (`score_breakdown`) for:
 - branch match
 - recency
 
-### 15) Shared KV cache (Milestone 9)
+### 16) Shared KV cache (Milestone 9)
 
 The agent service now supports backend-driven KV reuse probing for
 session-aware prefix reuse across related requests.
@@ -420,7 +445,7 @@ Local KV state is stored in:
 
 Backend probe endpoint defaults to `http://localhost:4000/v1/completions` and can be overridden per request with `kv_cache.backend_url` (or via `AGENT_KV_BACKEND_URL`).
 
-### 16) Observability events and alert thresholds (D residual hardening)
+### 17) Observability events and alert thresholds (D residual hardening)
 
 Recent hardening adds structured event logs and configurable alerts across core services.
 

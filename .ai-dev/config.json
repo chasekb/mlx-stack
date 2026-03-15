@@ -3,7 +3,9 @@
   "stack": {
     "mlx_port": 8081,
     "litellm_port": 4000,
-    "default_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit"
+    "default_model": "mlx-community/Qwen3.5-Coder-7B-Instruct-4bit",
+    "spec_router_port": 8092,
+    "embed_queue_port": 8093
   },
   "models": [
     {
