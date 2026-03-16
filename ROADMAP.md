@@ -382,7 +382,7 @@ following items remain incomplete for production-grade behavior.
 
 ### Current remaining gaps (explicit status)
 
-- [ ] **G.1 Host-native MLX runtime alignment**
+- [x] **G.1 Host-native MLX runtime alignment**
   - move operational guidance away from containerized MLX inference toward a host-native Apple Silicon runtime.
   - integrate `mlx-lm` installation into the documented `uv` environment bootstrap path.
   - update docs/config guidance so LiteLLM and related services target a host MLX endpoint instead of assuming `mlx.core` is available inside the Podman Linux container.
