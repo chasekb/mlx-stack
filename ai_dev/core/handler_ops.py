@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import argparse
+
 from ai_dev.command_groups import CommandHandlers
+from ai_dev.command_groups import build_parser as build_command_groups_parser
 
 
 def build_command_handlers(**handlers) -> CommandHandlers:
@@ -19,4 +22,12 @@ def build_command_handlers(**handlers) -> CommandHandlers:
         command_embed_enqueue=handlers["command_embed_enqueue"],
         command_embed_stats=handlers["command_embed_stats"],
         command_memory_explain=handlers["command_memory_explain"],
+    )
+
+
+def build_cli_parser(*, task_tag_aliases: dict[str, list[str]], **handlers) -> argparse.ArgumentParser:
+    command_handlers = build_command_handlers(**handlers)
+    return build_command_groups_parser(
+        handlers=command_handlers,
+        task_tag_aliases=task_tag_aliases,
     )

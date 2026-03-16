@@ -68,6 +68,22 @@ class TestCommandGroupsValidation(unittest.TestCase):
         self.assertEqual(args.command, "status")
         self.assertIs(args.func, _ok_handler)
 
+    def test_build_cli_parser_builds_parser_from_handler_kwargs(self) -> None:
+        parser = handler_ops.build_cli_parser(
+            task_tag_aliases={
+                "default": ["default"],
+                "analysis": ["analysis"],
+                "fast": ["fast"],
+                "longctx": ["longctx"],
+                "quality": ["quality"],
+            },
+            **_build_handlers(),
+        )
+
+        args = parser.parse_args(["models"])
+        self.assertEqual(args.command, "models")
+        self.assertIs(args.func, _ok_handler)
+
 
 if __name__ == "__main__":
     unittest.main()

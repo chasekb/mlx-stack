@@ -18,7 +18,6 @@ from ai_dev.core import retrieve_ops as core_retrieve_ops
 from ai_dev.core import retrieval as core_retrieval
 from ai_dev.core import runtime_ops as core_runtime_ops
 from ai_dev.core import stack_ops as core_stack_ops
-from ai_dev.command_groups import build_parser as build_command_groups_parser
 from ai_dev.templates import (
     AGENT_HTTP_API,
     AGENT_HTTP_SERVICE,
@@ -330,24 +329,22 @@ def command_embed_stats(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    return build_command_groups_parser(
-        handlers=core_handler_ops.build_command_handlers(
-            command_init=command_init,
-            command_up=command_up,
-            command_down=command_down,
-            command_status=command_status,
-            command_pull_models=command_pull_models,
-            command_index=command_index,
-            command_retrieve=command_retrieve,
-            command_configure_cursor=command_configure_cursor,
-            command_models=command_models,
-            command_route_model=command_route_model,
-            command_spec_decode=command_spec_decode,
-            command_embed_enqueue=command_embed_enqueue,
-            command_embed_stats=command_embed_stats,
-            command_memory_explain=command_memory_explain,
-        ),
+    return core_handler_ops.build_cli_parser(
         task_tag_aliases=TASK_TAG_ALIASES,
+        command_init=command_init,
+        command_up=command_up,
+        command_down=command_down,
+        command_status=command_status,
+        command_pull_models=command_pull_models,
+        command_index=command_index,
+        command_retrieve=command_retrieve,
+        command_configure_cursor=command_configure_cursor,
+        command_models=command_models,
+        command_route_model=command_route_model,
+        command_spec_decode=command_spec_decode,
+        command_embed_enqueue=command_embed_enqueue,
+        command_embed_stats=command_embed_stats,
+        command_memory_explain=command_memory_explain,
     )
 
 

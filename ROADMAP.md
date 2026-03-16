@@ -385,8 +385,8 @@ following items remain incomplete for production-grade behavior.
   - backend-integrated KV probing is now implemented in `agent/cache_kv.py` (no orchestration-only metadata fallback path for reuse outcomes).
 - [x] **E.1 Template/runtime duplication reduction completion**
   - template constants are now sourced from canonical runtime/template files, removing duplicated embedded service template literals in `ai_dev/templates/service_templates.py`.
-- [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
-  - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
+- [~] **F.1 Full `ai_dev/cli.py` modularization completion**
+  - partial extractions are complete (`ai_dev/core/*`), and parser bootstrap is now delegated through `ai_dev/core/handler_ops.py`; final residual CLI wrapper reduction is still in progress.
 - [x] **F.3/F.4 Architecture boundary completion**
   - `agent/server.py` internals are now split into focused modules, HTTP-handler decomposition is completed via `agent/http_api.py`, handler-context contract formalization is added via `agent/contracts.py`, and service-layer boundary formalization is completed by introducing a dedicated validated `AgentHttpServiceContext` consumed by `agent/http_service.py`.
 
@@ -795,6 +795,13 @@ following items remain incomplete for production-grade behavior.
 - Updated `ai_dev/cli.py` to delegate command-handler mapping assembly to `build_command_handlers(...)` instead of building the full registration dict inline.
 - Added focused coverage in `tests/test_command_groups.py` to verify the extracted builder still produces a complete handler contract accepted by `validate_command_handlers(...)`.
 - This further reduces parser/bootstrap coupling in `ai_dev/cli.py` and advances the remaining F.1 modularization work in a compatibility-safe tranche.
+
+#### F completion notes (CLI parser-bootstrap delegation tranche)
+
+- Extended `ai_dev/core/handler_ops.py` with `build_cli_parser(...)` to centralize the final handler-map + parser-construction bootstrap path.
+- Updated `ai_dev/cli.py` `build_parser()` to delegate directly to `core_handler_ops.build_cli_parser(...)` rather than assembling the typed handler map inline.
+- Added focused coverage in `tests/test_command_groups.py` to verify parser construction through `handler_ops.build_cli_parser(...)` preserves subcommand wiring.
+- This removes another remaining parser/bootstrap responsibility from `ai_dev/cli.py` and advances F.1 toward production-grade completion while preserving current CLI contracts.
 
 #### F completion notes (CLI remote-wrapper cleanup tranche)
 

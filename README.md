@@ -696,6 +696,12 @@ Recent CLI handler-map modularization progress extracted typed parser-handler ma
 
 `ai_dev/cli.py` now delegates command-handler mapping assembly to this module before handing parser construction off to `ai_dev.command_groups.build_parser(...)`, further reducing bootstrap wiring clutter while preserving existing command contracts and tests.
 
+Recent CLI parser-bootstrap modularization progress further reduced `ai_dev/cli.py` bootstrap responsibilities by extending:
+
+- `ai_dev/core/handler_ops.py` (`build_cli_parser`)
+
+`ai_dev/cli.py` `build_parser()` now delegates its final parser bootstrap path through `handler_ops.build_cli_parser(...)`, so the CLI module no longer assembles the typed handler map inline before parser creation. Focused coverage in `tests/test_command_groups.py` verifies this delegated parser construction path still preserves command wiring behavior.
+
 Recent CLI remote-wrapper cleanup progress removed redundant passthrough helpers from:
 
 - `ai_dev/cli.py` (`_tokenize_for_spec`, `_http_json`)
