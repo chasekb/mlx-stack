@@ -789,6 +789,13 @@ following items remain incomplete for production-grade behavior.
 - Updated `ai_dev/cli.py` wrappers (`run`, `write_file`) to delegate to `ai_dev.core.runtime_ops` while preserving existing function names/signatures used by current command flows.
 - This further reduces utility-level coupling in `ai_dev/cli.py` and continues F.1 modularization progress toward production-grade completion.
 
+#### F completion notes (CLI handler-map extraction tranche)
+
+- Added `ai_dev/core/handler_ops.py` to centralize typed CLI command-handler map construction for parser bootstrap.
+- Updated `ai_dev/cli.py` to delegate command-handler mapping assembly to `build_command_handlers(...)` instead of building the full registration dict inline.
+- Added focused coverage in `tests/test_command_groups.py` to verify the extracted builder still produces a complete handler contract accepted by `validate_command_handlers(...)`.
+- This further reduces parser/bootstrap coupling in `ai_dev/cli.py` and advances the remaining F.1 modularization work in a compatibility-safe tranche.
+
 #### F completion notes (CLI remote-wrapper cleanup tranche)
 
 - Removed now-redundant remote utility wrappers from `ai_dev/cli.py`:

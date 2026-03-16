@@ -690,6 +690,12 @@ Recent CLI runtime-ops modularization progress extracted low-level runtime helpe
 
 `ai_dev/cli.py` now delegates its `run(...)` and `write_file(...)` wrappers to this module while preserving existing call signatures and behavior across stack/index/init command flows.
 
+Recent CLI handler-map modularization progress extracted typed parser-handler map construction into:
+
+- `ai_dev/core/handler_ops.py` (`build_command_handlers`)
+
+`ai_dev/cli.py` now delegates command-handler mapping assembly to this module before handing parser construction off to `ai_dev.command_groups.build_parser(...)`, further reducing bootstrap wiring clutter while preserving existing command contracts and tests.
+
 Recent CLI remote-wrapper cleanup progress removed redundant passthrough helpers from:
 
 - `ai_dev/cli.py` (`_tokenize_for_spec`, `_http_json`)

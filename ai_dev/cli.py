@@ -7,6 +7,7 @@ from typing import Iterable
 
 from ai_dev.core import config_ops as core_config_ops
 from ai_dev.core import git_ops as core_git_ops
+from ai_dev.core import handler_ops as core_handler_ops
 from ai_dev.core import init_ops as core_init_ops
 from ai_dev.core import index_ops as core_index_ops
 from ai_dev.core import indexing as core_indexing
@@ -330,22 +331,22 @@ def command_embed_stats(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     return build_command_groups_parser(
-        handlers={
-            "command_init": command_init,
-            "command_up": command_up,
-            "command_down": command_down,
-            "command_status": command_status,
-            "command_pull_models": command_pull_models,
-            "command_index": command_index,
-            "command_retrieve": command_retrieve,
-            "command_configure_cursor": command_configure_cursor,
-            "command_models": command_models,
-            "command_route_model": command_route_model,
-            "command_spec_decode": command_spec_decode,
-            "command_embed_enqueue": command_embed_enqueue,
-            "command_embed_stats": command_embed_stats,
-            "command_memory_explain": command_memory_explain,
-        },
+        handlers=core_handler_ops.build_command_handlers(
+            command_init=command_init,
+            command_up=command_up,
+            command_down=command_down,
+            command_status=command_status,
+            command_pull_models=command_pull_models,
+            command_index=command_index,
+            command_retrieve=command_retrieve,
+            command_configure_cursor=command_configure_cursor,
+            command_models=command_models,
+            command_route_model=command_route_model,
+            command_spec_decode=command_spec_decode,
+            command_embed_enqueue=command_embed_enqueue,
+            command_embed_stats=command_embed_stats,
+            command_memory_explain=command_memory_explain,
+        ),
         task_tag_aliases=TASK_TAG_ALIASES,
     )
 

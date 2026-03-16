@@ -4,6 +4,7 @@ import argparse
 import unittest
 
 from ai_dev import command_groups
+from ai_dev.core import handler_ops
 
 
 def _ok_handler(_: argparse.Namespace) -> int:
@@ -15,6 +16,11 @@ def _build_handlers() -> dict[str, command_groups.CommandHandler]:
 
 
 class TestCommandGroupsValidation(unittest.TestCase):
+    def test_build_command_handlers_returns_typed_complete_mapping(self) -> None:
+        handlers = handler_ops.build_command_handlers(**_build_handlers())
+        command_groups.validate_command_handlers(handlers)
+        self.assertEqual(set(handlers.keys()), set(command_groups.REQUIRED_HANDLER_KEYS))
+
     def test_validate_command_handlers_accepts_complete_mapping(self) -> None:
         handlers = _build_handlers()
         command_groups.validate_command_handlers(handlers)
