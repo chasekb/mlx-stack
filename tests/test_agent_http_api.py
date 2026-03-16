@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from agent import http_api
+from agent.contracts import build_agent_http_service_context
 
 
 def _build_context() -> dict[str, object]:
@@ -55,6 +56,13 @@ class TestAgentHttpApiContextValidation(unittest.TestCase):
             http_api.build_handler(context)
 
         self.assertIn("non-callable: retrieve", str(ctx.exception))
+
+    def test_build_agent_http_service_context_drops_tool_only_fields(self) -> None:
+        service_context = build_agent_http_service_context(_build_context())
+
+        self.assertNotIn("tool_schemas", service_context)
+        self.assertEqual(service_context["runs_dir"], Path("."))
+        self.assertTrue(callable(service_context["run_agent_task"]))
 
 
 if __name__ == "__main__":

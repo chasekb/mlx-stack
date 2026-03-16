@@ -387,8 +387,8 @@ following items remain incomplete for production-grade behavior.
   - template constants are now sourced from canonical runtime/template files, removing duplicated embedded service template literals in `ai_dev/templates/service_templates.py`.
 - [ ] **F.1 Full `ai_dev/cli.py` modularization completion**
   - partial extractions are complete (`ai_dev/core/*`), but command-group split and final coupling reduction are still in progress.
-- [ ] **F.3/F.4 Architecture boundary completion**
-  - `agent/server.py` internals were split into focused modules, and HTTP-handler decomposition is now completed via `agent/http_api.py`; handler-context contract formalization is now added via `agent/contracts.py`, and agent-run response orchestration was extracted to `agent/http_service.py`; broader service-layer boundary formalization remains to be fully completed.
+- [x] **F.3/F.4 Architecture boundary completion**
+  - `agent/server.py` internals are now split into focused modules, HTTP-handler decomposition is completed via `agent/http_api.py`, handler-context contract formalization is added via `agent/contracts.py`, and service-layer boundary formalization is completed by introducing a dedicated validated `AgentHttpServiceContext` consumed by `agent/http_service.py`.
 
 ### A) Agent mutation path hardening
 
@@ -859,3 +859,12 @@ following items remain incomplete for production-grade behavior.
   - metrics alert emission + KV model summarization
   - run lookup success/not-found/root-guard behavior
   - retrieve missing-index/missing-query/success paths and `top_k` clamping.
+
+#### F completion notes (agent service-context boundary tranche)
+
+- Extended `agent/contracts.py` with a dedicated `AgentHttpServiceContext` plus:
+  - `validate_agent_http_service_context(...)`
+  - `build_agent_http_service_context(...)`
+- Updated `agent/http_api.py` to construct the narrower validated service-layer dependency bundle once at handler build time, while preserving `/tools` access to the broader HTTP context.
+- Updated `agent/http_service.py` to consume the narrower service context type directly, making transport/service responsibilities more explicit and completing the remaining F.3/F.4 boundary-hardening gap.
+- Added focused coverage in `tests/test_agent_http_api.py` to verify service-context construction excludes transport-only fields and preserves required service dependencies.

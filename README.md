@@ -597,6 +597,16 @@ Recent agent HTTP GET service-layer extraction extended this transport/runtime d
 `agent/http_service.py`, with focused service tests covering metrics alert emission/KV summaries,
 run lookup success/not-found handling, and retrieve validation plus `top_k` clamping behavior.
 
+Recent agent service-boundary hardening completed the remaining HTTP service-layer contract split by adding:
+
+- `agent/contracts.py` `AgentHttpServiceContext` plus validated service-context construction helpers
+
+`agent/http_api.py` now derives a narrower validated dependency bundle for `agent/http_service.py`,
+so transport-only concerns such as `/tools` schema exposure remain in the HTTP layer while service
+orchestration consumes a smaller explicit contract. Focused coverage in `tests/test_agent_http_api.py`
+verifies the constructed service context excludes transport-only fields and preserves required runtime
+dependencies.
+
 Recent template-source unification progress further reduced duplication by making
 `ai_dev/templates/service_templates.py` load template constants from canonical
 repository files (e.g., `agent/server.py`, `embedding_worker/worker.py`,

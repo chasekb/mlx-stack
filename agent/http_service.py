@@ -4,10 +4,10 @@ import json
 import time
 from typing import Callable
 
-from agent.contracts import AgentHttpContext
+from agent.contracts import AgentHttpServiceContext
 
 
-def build_metrics_response(context: AgentHttpContext) -> dict:
+def build_metrics_response(context: AgentHttpServiceContext) -> dict:
     metrics = context["load_metrics"]()
     kv_obj = context["load_kv_cache"]()
     kv_summary = {}
@@ -36,7 +36,7 @@ def build_metrics_response(context: AgentHttpContext) -> dict:
     }
 
 
-def build_run_response(run_id: str, context: AgentHttpContext) -> tuple[dict, int]:
+def build_run_response(run_id: str, context: AgentHttpServiceContext) -> tuple[dict, int]:
     target = (context["runs_dir"] / f"{run_id}.json").resolve()
     if not target.exists() or not target.is_file() or not context["ensure_under_root"](target):
         return {"error": "run_not_found"}, 404
@@ -48,7 +48,7 @@ def build_retrieve_response(
     query: str,
     top_k: int,
     path_prefix: str | None,
-    context: AgentHttpContext,
+    context: AgentHttpServiceContext,
 ) -> tuple[dict, int]:
     if not context["index_path"].exists():
         return {"error": "missing_index", "detail": "Run `ai-dev index .` first."}, 400
@@ -65,7 +65,7 @@ def build_retrieve_response(
 
 def build_agent_run_response(
     payload: dict,
-    context: AgentHttpContext,
+    context: AgentHttpServiceContext,
     perf_counter_fn: Callable[[], float] = time.perf_counter,
 ) -> dict:
     payload = payload if isinstance(payload, dict) else {}

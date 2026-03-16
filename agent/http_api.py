@@ -6,7 +6,12 @@ from http.server import BaseHTTPRequestHandler
 from typing import Mapping, cast
 from urllib.parse import parse_qs, urlparse
 
-from agent.contracts import AgentHttpContext, validate_agent_http_context
+from agent.contracts import (
+    AgentHttpContext,
+    AgentHttpServiceContext,
+    build_agent_http_service_context,
+    validate_agent_http_context,
+)
 from agent.http_service import (
     build_agent_run_response,
     build_metrics_response,
@@ -18,6 +23,7 @@ from agent.http_service import (
 def build_handler(context: Mapping[str, object]):
     validate_agent_http_context(context)
     context = cast(AgentHttpContext, context)
+    service_context: AgentHttpServiceContext = build_agent_http_service_context(context)
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, payload, status=200):
@@ -30,7 +36,7 @@ def build_handler(context: Mapping[str, object]):
             parsed = urlparse(self.path)
 
             if parsed.path == "/metrics":
-                response_payload = build_metrics_response(context)
+                response_payload = build_metrics_response(service_context)
                 self._reply(response_payload)
                 return
 
@@ -40,7 +46,7 @@ def build_handler(context: Mapping[str, object]):
 
             if parsed.path.startswith("/runs/"):
                 run_id = parsed.path.split("/runs/", 1)[1].strip()
-                response_payload, status = build_run_response(run_id, context)
+                response_payload, status = build_run_response(run_id, service_context)
                 self._reply(response_payload, status=status)
                 return
 
@@ -52,7 +58,7 @@ def build_handler(context: Mapping[str, object]):
                 except ValueError:
                     top_k = 5
                 path_prefix = (qs.get("path_prefix", [""])[0] or "").strip() or None
-                response_payload, status = build_retrieve_response(query, top_k, path_prefix, context)
+                response_payload, status = build_retrieve_response(query, top_k, path_prefix, service_context)
                 self._reply(response_payload, status=status)
                 return
 
@@ -80,7 +86,11 @@ def build_handler(context: Mapping[str, object]):
                 self._reply({"error": "invalid_json"}, status=400)
                 return
 
-            response_payload = build_agent_run_response(payload, context=context, perf_counter_fn=time.perf_counter)
+            response_payload = build_agent_run_response(
+                payload,
+                context=service_context,
+                perf_counter_fn=time.perf_counter,
+            )
             self._reply(response_payload)
 
     return Handler
