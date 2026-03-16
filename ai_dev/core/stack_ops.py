@@ -63,13 +63,14 @@ def command_pull_models(args, *, load_config_fn, python_executable: str, subproc
         print("No matching model profiles found.", file=sys.stderr)
         return 2
 
-    commands: list[tuple[str, list[str]]] = []
+    commands: list[tuple[str, Path, list[str]]] = []
     for m in profiles:
         name = m.get("name", "local-mlx")
         hf_model = m.get("hf_model") or args.model
         q = m.get("quantization", f"{args.quantization}bit").replace("bit", "")
         output_path = m.get("output_path", f"models/{name}")
-        Path(output_path).mkdir(parents=True, exist_ok=True)
+        output_path_path = Path(output_path)
+        output_path_path.parent.mkdir(parents=True, exist_ok=True)
 
         cmd = [
             python_executable,
@@ -79,23 +80,37 @@ def command_pull_models(args, *, load_config_fn, python_executable: str, subproc
             "--hf-path",
             hf_model,
             "--mlx-path",
-            output_path,
+            str(output_path_path),
             "--quantize",
             "--q-bits",
             q,
         ]
-        commands.append((name, cmd))
+        commands.append((name, output_path_path, cmd))
 
     if args.dry_run:
         print("Dry run (commands to execute):\n")
-        for name, cmd in commands:
+        for name, _, cmd in commands:
             print(f"# Profile: {name}")
             print(" ".join(cmd))
             print("")
         return 0
 
     rc = 0
-    for name, cmd in commands:
+    for name, output_path_path, cmd in commands:
+        if output_path_path.exists():
+            if output_path_path.is_dir() and not any(output_path_path.iterdir()):
+                output_path_path.rmdir()
+            else:
+                rc = 2
+                print(
+                    f"[pull-models] Output path already exists for profile '{name}': {output_path_path}. "
+                    "Remove it (or set a different output_path in .ai-dev/config.json) and retry.",
+                    file=sys.stderr,
+                )
+                if not args.continue_on_error:
+                    return rc
+                continue
+
         print(f"[pull-models] Converting profile: {name}")
         proc = subprocess_run_fn(cmd)
         if proc.returncode != 0:
