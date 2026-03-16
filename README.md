@@ -666,9 +666,15 @@ Recent CLI config/init modularization progress extracted configuration and initi
 
 - `ai_dev/core/config_ops.py` (`DEFAULT_CONFIG`, `TASK_TAG_ALIASES`, `ensure_config_schema`, and `load_config`)
 - `ai_dev/core/init_ops.py` (`command_init` orchestration for generated files and config writes)
+- `ai_dev/core/paths.py` (`APP_DIR`, `CONFIG_PATH`, `INDEX_PATH`, `INDEX_STATE_PATH`)
 
 `ai_dev/cli.py` now delegates config/init wrappers to these modules while preserving
 existing command contracts, generated output behavior, and compatibility with current call paths.
+
+Recent CLI init/bootstrap cleanup progress further reduced top-level CLI wiring by moving
+the default generated template manifest into `ai_dev/core/init_ops.py`. `ai_dev/cli.py`
+now reuses canonical core path constants and delegates `init` without assembling the
+template file list inline, trimming another remaining orchestration concern from the CLI module.
 
 Recent CLI index-mode argparse modularization progress consolidated parser ownership into command groups:
 

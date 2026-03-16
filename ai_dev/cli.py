@@ -13,29 +13,20 @@ from ai_dev.core import index_ops as core_index_ops
 from ai_dev.core import indexing as core_indexing
 from ai_dev.core import index_state as core_index_state
 from ai_dev.core import model_ops as core_model_ops
+from ai_dev.core import paths as core_paths
 from ai_dev.core import remote_ops as core_remote_ops
 from ai_dev.core import retrieve_ops as core_retrieve_ops
 from ai_dev.core import retrieval as core_retrieval
 from ai_dev.core import runtime_ops as core_runtime_ops
 from ai_dev.core import stack_ops as core_stack_ops
 from ai_dev.templates import (
-    AGENT_HTTP_API,
-    AGENT_HTTP_SERVICE,
-    AGENT_SERVER,
-    EMBED_QUEUE_SERVER,
-    EMBED_WORKER,
     LITELLM_CONFIG,
-    MLX_DOCKERFILE,
-    MLX_ENTRYPOINT,
-    PODMAN_COMPOSE_YAML,
-    RAG_SERVER,
-    SPEC_ROUTER_SERVER,
 )
 
-APP_DIR = Path(".ai-dev")
-CONFIG_PATH = APP_DIR / "config.json"
-INDEX_PATH = APP_DIR / "index.json"
-INDEX_STATE_PATH = APP_DIR / "index_state.json"
+APP_DIR = core_paths.APP_DIR
+CONFIG_PATH = core_paths.CONFIG_PATH
+INDEX_PATH = core_paths.INDEX_PATH
+INDEX_STATE_PATH = core_paths.INDEX_STATE_PATH
 
 
 
@@ -92,18 +83,6 @@ def command_init(_: argparse.Namespace) -> int:
         load_config_fn=load_config,
         write_file_fn=write_file,
         generate_litellm_config_fn=generate_litellm_config,
-        template_files=[
-            (Path("podman-compose.yml"), PODMAN_COMPOSE_YAML, False),
-            (Path("mlx/entrypoint.sh"), MLX_ENTRYPOINT, True),
-            (Path("mlx/Dockerfile"), MLX_DOCKERFILE, False),
-            (Path("rag/server.py"), RAG_SERVER, False),
-            (Path("agent/server.py"), AGENT_SERVER, False),
-            (Path("agent/http_api.py"), AGENT_HTTP_API, False),
-            (Path("agent/http_service.py"), AGENT_HTTP_SERVICE, False),
-            (Path("spec_router/server.py"), SPEC_ROUTER_SERVER, False),
-            (Path("embedding_queue/server.py"), EMBED_QUEUE_SERVER, False),
-            (Path("embedding_worker/worker.py"), EMBED_WORKER, False),
-        ],
     )
 
 
