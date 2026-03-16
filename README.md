@@ -103,6 +103,12 @@ project environment before starting the Podman services. It also starts the full
 stack by default, including services that were previously behind the compose `optional`
 profile such as `agent`, `spec-router`, `embed-queue`, `embed-worker`, `rag`, and `qdrant`.
 
+On systems where the external compose provider is `podman-compose`, `ai-dev` now enables
+the optional service set through `COMPOSE_PROFILES=optional` instead of passing a
+`--profile` flag directly. This preserves the default full-stack behavior while avoiding
+the `podman-compose: error: unrecognized arguments: --profile` failure mode seen in some
+provider/version combinations.
+
 By default it prefers:
 
 - `stack.mlx_python` from `.ai-dev/config.json` when configured
@@ -146,12 +152,20 @@ If you need to customize the managed host MLX process, set these fields in `.ai-
 - `stack.mlx_port`
 
 `ai-dev down` also stops the managed host MLX process when it was started by the app.
+If compose teardown fails, `ai-dev down` now performs a best-effort forced cleanup of the
+known Podman containers/pod/network for this project so repeated `up`/`down` cycles can
+recover from partially torn-down stacks.
 
 ### 6) Generate Cursor-compatible API settings
 
 ```bash
 ai-dev configure-cursor
 ```
+
+This command now emits host-MLX settings for Cursor. It uses the host MLX endpoint
+derived from `stack.mlx_api_base` and normalizes `host.containers.internal` to
+`localhost` for host-side use. It also emits the underlying MLX model id for the
+selected profile instead of the LiteLLM routing alias.
 
 ### 7) Build local project index (lightweight)
 

@@ -933,6 +933,8 @@ environment, while preserving the rest of the local orchestration workflow.
 - Updated `ai_dev/core/stack_ops.py` so generated LiteLLM config prefers the configured host `mlx_api_base`, and `ai-dev up/down/status` now manage and report a host MLX process automatically.
 - Updated `ai_dev/core/stack_ops.py` so generated LiteLLM config prefers the configured host `mlx_api_base`, and `ai-dev up` now emits an explicit host-runtime reminder before starting compose services.
 - Updated `ai_dev/core/stack_ops.py` and `ai_dev/command_groups.py` so `ai-dev up` now enables the compose `optional` profile by default; `--with-optional` remains accepted as a deprecated compatibility flag.
+- Updated `ai_dev/core/stack_ops.py` runtime compose invocation to enable optional services through `COMPOSE_PROFILES=optional` instead of a direct `--profile optional` CLI flag, improving compatibility with external `podman-compose` providers that reject the flag ordering/placement.
+- Added best-effort forced Podman cleanup fallback in `ai_dev/core/stack_ops.py` for `ai-dev down`, so failed compose teardown can still stop/remove known project containers and remove the derived project pod/network.
 - Updated checked-in runtime/config artifacts (`litellm_config.yaml`, `.ai-dev/config.json`, `podman-compose.yml`) to remove the in-compose MLX dependency and point LiteLLM at the host MLX endpoint.
 - Updated `README.md` to document automatic host MLX startup, managed process state/log files, and the config knobs used to customize the managed MLX process.
 - This completes the host-native MLX automation path needed to close the G.1 roadmap gap.

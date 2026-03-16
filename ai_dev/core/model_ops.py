@@ -1,6 +1,32 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse, urlunparse
+
+
+def _cursor_host_base_url(cfg: dict) -> str:
+    stack_cfg = cfg.get("stack") or {}
+    raw_base = stack_cfg.get("mlx_api_base") or cfg.get("cursor", {}).get("base_url") or "http://localhost:4000/v1"
+    parsed = urlparse(raw_base)
+    host = parsed.hostname or "localhost"
+    if host == "host.containers.internal":
+        host = "localhost"
+
+    if parsed.port is not None:
+        netloc = f"{host}:{parsed.port}"
+    else:
+        netloc = host
+
+    return urlunparse((parsed.scheme or "http", netloc, parsed.path or "/v1", "", "", ""))
+
+
+def _cursor_host_model(cfg: dict, selected_model: str | None) -> str:
+    if selected_model:
+        for model_cfg in cfg.get("models", []):
+            if model_cfg.get("name") == selected_model:
+                return model_cfg.get("mlx_model") or model_cfg.get("hf_model") or selected_model
+    stack_cfg = cfg.get("stack") or {}
+    return stack_cfg.get("default_model") or cfg.get("cursor", {}).get("model") or "local-mlx"
 
 
 def resolve_model_for_tag(models: list[dict], tag: str, task_tag_aliases: dict[str, list[str]]) -> str:
@@ -69,11 +95,11 @@ def command_configure_cursor(
         selected_model = cfg["cursor"]["model"]
 
     cursor_cfg = {
-        "name": "Local LiteLLM",
+        "name": "Local MLX",
         "provider": "openai",
-        "baseUrl": args.base_url or cfg["cursor"]["base_url"],
+        "baseUrl": args.base_url or _cursor_host_base_url(cfg),
         "apiKey": args.api_key or cfg["cursor"]["api_key"],
-        "model": selected_model,
+        "model": _cursor_host_model(cfg, selected_model),
     }
 
     app_dir.mkdir(parents=True, exist_ok=True)

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Mapping
 
 
-def run_command(cmd: list[str], *, cwd: Path | None = None) -> int:
-    proc = subprocess.run(cmd, cwd=cwd)
+def run_command(cmd: list[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None) -> int:
+    proc = subprocess.run(cmd, cwd=cwd, env=dict(env) if env is not None else None)
     return proc.returncode
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -29,8 +30,11 @@ DEFAULT_CONFIG = core_config_ops.DEFAULT_CONFIG
 TASK_TAG_ALIASES = core_config_ops.TASK_TAG_ALIASES
 
 
-def run(cmd: list[str], cwd: Path | None = None) -> int:
-    return core_runtime_ops.run_command(cmd, cwd=cwd)
+def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> int:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    return core_runtime_ops.run_command(cmd, cwd=cwd, env=merged_env)
 
 
 def write_file(path: Path, content: str, executable: bool = False) -> None:
@@ -86,6 +90,8 @@ def command_down(args: argparse.Namespace) -> int:
         compose_command_fn=_compose_command,
         run_fn=run,
         app_dir=APP_DIR,
+        project_root=Path.cwd(),
+        compose_file=Path("podman-compose.yml"),
     )
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -16,6 +17,40 @@ def compose_command(compose_file: Path) -> list[str]:
         print("Missing podman-compose.yml. Run `ai-dev init` first.", file=sys.stderr)
         raise SystemExit(2)
     return ["podman", "compose", "-f", str(compose_file)]
+
+
+def _container_names_from_compose_file(compose_file: Path) -> list[str]:
+    if not compose_file.exists():
+        return []
+    names: list[str] = []
+    for line in compose_file.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"\s*container_name:\s*([^\s#]+)", line)
+        if match:
+            names.append(match.group(1).strip().strip('"\''))
+    return names
+
+
+def _compose_project_pod_name(project_root: Path) -> str:
+    return f"{project_root.name}_default"
+
+
+def _force_cleanup_compose_resources(
+    *,
+    compose_file: Path,
+    project_root: Path,
+    run_fn,
+) -> int:
+    container_names = _container_names_from_compose_file(compose_file)
+    rc = 0
+
+    if container_names:
+        rc = run_fn(["podman", "stop", "-t", "0", *container_names]) or rc
+        rc = run_fn(["podman", "rm", "-f", *container_names]) or rc
+
+    pod_name = _compose_project_pod_name(project_root)
+    rc = run_fn(["podman", "pod", "rm", "-f", pod_name]) or rc
+    rc = run_fn(["podman", "network", "rm", pod_name]) or rc
+    return rc
 
 
 def _mlx_state_path(app_dir: Path) -> Path:
@@ -236,13 +271,30 @@ def command_up(
     )
     if rc != 0:
         return rc
-    cmd = compose_command_fn() + ["--profile", "optional", "up", "-d"]
-    return run_fn(cmd)
+    cmd = compose_command_fn() + ["up", "-d"]
+    return run_fn(cmd, env={"COMPOSE_PROFILES": "optional"})
 
 
-def command_down(_, *, compose_command_fn, run_fn, app_dir: Path, pid_is_alive_fn=_pid_is_alive) -> int:
+def command_down(
+    _,
+    *,
+    compose_command_fn,
+    run_fn,
+    app_dir: Path,
+    project_root: Path,
+    compose_file: Path | None = None,
+    pid_is_alive_fn=_pid_is_alive,
+) -> int:
     cmd = compose_command_fn() + ["down"]
-    rc = run_fn(cmd)
+    rc = run_fn(cmd, env={"COMPOSE_PROFILES": "optional"})
+    if rc != 0:
+        cleanup_compose_file = compose_file or (project_root / "podman-compose.yml")
+        cleanup_rc = _force_cleanup_compose_resources(
+            compose_file=cleanup_compose_file,
+            project_root=project_root,
+            run_fn=run_fn,
+        )
+        rc = cleanup_rc if cleanup_rc == 0 else rc
     stop_rc = _stop_managed_host_mlx(app_dir, pid_is_alive_fn=pid_is_alive_fn)
     return rc or stop_rc
 
