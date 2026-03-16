@@ -236,9 +236,7 @@ def command_up(
     )
     if rc != 0:
         return rc
-    cmd = compose_command_fn() + ["up", "-d"]
-    if args.with_optional:
-        cmd.extend(["--profile", "optional"])
+    cmd = compose_command_fn() + ["--profile", "optional", "up", "-d"]
     return run_fn(cmd)
 
 

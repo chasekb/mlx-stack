@@ -99,7 +99,11 @@ ai-dev up
 ```
 
 `ai-dev up` now attempts to automatically start a managed host MLX server from the local
-project environment before starting the Podman services. By default it prefers:
+project environment before starting the Podman services. It also starts the full local
+stack by default, including services that were previously behind the compose `optional`
+profile such as `agent`, `spec-router`, `embed-queue`, `embed-worker`, `rag`, and `qdrant`.
+
+By default it prefers:
 
 - `stack.mlx_python` from `.ai-dev/config.json` when configured
 - otherwise `./.venv/bin/python` when present
@@ -307,14 +311,16 @@ Local cache/metrics files are written under `.ai-dev/`:
 
 ### 13) Speculative decode foundation (Milestone 6)
 
-This repo now includes a local `spec-router` service (optional profile) that can run
+This repo now includes a local `spec-router` service that can run
 a draft-vs-target token acceptance loop via HTTP.
 
-Start optional services (includes `spec-router`):
+Start the stack (includes `spec-router` by default):
 
 ```bash
-ai-dev up --with-optional
+ai-dev up
 ```
+
+`ai-dev up --with-optional` is still accepted as a deprecated no-op for compatibility.
 
 Health check:
 
@@ -389,10 +395,10 @@ This repo now includes a lightweight background embedding pipeline:
   - `ai-dev embed-enqueue`
   - `ai-dev embed-stats`
 
-Start optional services:
+Start the stack:
 
 ```bash
-ai-dev up --with-optional
+ai-dev up
 ```
 
 Enqueue a job:

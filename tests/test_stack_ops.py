@@ -78,7 +78,10 @@ class TestStackOpsHostMlx(unittest.TestCase):
             )
 
             self.assertEqual(rc, 0)
-            self.assertEqual(calls, [["podman", "compose", "-f", "podman-compose.yml", "up", "-d"]])
+            self.assertEqual(
+                calls,
+                [["podman", "compose", "-f", "podman-compose.yml", "--profile", "optional", "up", "-d"]],
+            )
             state = stack_ops._read_mlx_state(app_dir / "mlx_host_process.json")
             self.assertIsNotNone(state)
             assert state is not None

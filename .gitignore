@@ -12,8 +12,10 @@ dist/
 
 # Local model storage
 models/
+embedding_queue/
 
 # Local ai-dev runtime artifacts
+.ai-dev/
 .ai-dev/runs/
 .ai-dev/index_state.json
 .ai-dev/prompt_cache.json

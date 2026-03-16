@@ -932,6 +932,7 @@ environment, while preserving the rest of the local orchestration workflow.
 - Updated `README.md` to recommend `uv venv` + `uv pip install -e .[mlx-host]` and to document that MLX serving must run on the macOS host.
 - Updated `ai_dev/core/stack_ops.py` so generated LiteLLM config prefers the configured host `mlx_api_base`, and `ai-dev up/down/status` now manage and report a host MLX process automatically.
 - Updated `ai_dev/core/stack_ops.py` so generated LiteLLM config prefers the configured host `mlx_api_base`, and `ai-dev up` now emits an explicit host-runtime reminder before starting compose services.
+- Updated `ai_dev/core/stack_ops.py` and `ai_dev/command_groups.py` so `ai-dev up` now enables the compose `optional` profile by default; `--with-optional` remains accepted as a deprecated compatibility flag.
 - Updated checked-in runtime/config artifacts (`litellm_config.yaml`, `.ai-dev/config.json`, `podman-compose.yml`) to remove the in-compose MLX dependency and point LiteLLM at the host MLX endpoint.
 - Updated `README.md` to document automatic host MLX startup, managed process state/log files, and the config knobs used to customize the managed MLX process.
 - This completes the host-native MLX automation path needed to close the G.1 roadmap gap.

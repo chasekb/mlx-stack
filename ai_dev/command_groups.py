@@ -70,8 +70,12 @@ def register_all_commands(
     p_init = sub.add_parser("init", help="Generate stack files and default config")
     p_init.set_defaults(func=handlers["command_init"])
 
-    p_up = sub.add_parser("up", help="Start podman compose stack")
-    p_up.add_argument("--with-optional", action="store_true", help="Enable optional profile services")
+    p_up = sub.add_parser("up", help="Start podman compose stack (includes optional services by default)")
+    p_up.add_argument(
+        "--with-optional",
+        action="store_true",
+        help="Deprecated no-op; optional profile services are now started by default",
+    )
     p_up.set_defaults(func=handlers["command_up"])
 
     p_down = sub.add_parser("down", help="Stop podman compose stack")
