@@ -2,17 +2,17 @@ model_list:
   - model_name: local-mlx-fast
     litellm_params:
       model: openai/local-mlx-fast
-      api_base: http://mlx:8081/v1
+      api_base: http://host.containers.internal:8081/v1
       api_key: local-dev
   - model_name: local-mlx
     litellm_params:
       model: openai/local-mlx
-      api_base: http://mlx:8081/v1
+      api_base: http://host.containers.internal:8081/v1
       api_key: local-dev
   - model_name: local-mlx-longctx
     litellm_params:
       model: openai/local-mlx-longctx
-      api_base: http://mlx:8081/v1
+      api_base: http://host.containers.internal:8081/v1
       api_key: local-dev
 
 general_settings:

@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
+import os
+import signal
+import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def compose_command(compose_file: Path) -> list[str]:
@@ -12,30 +18,260 @@ def compose_command(compose_file: Path) -> list[str]:
     return ["podman", "compose", "-f", str(compose_file)]
 
 
-def command_up(args, *, compose_command_fn, run_fn) -> int:
+def _mlx_state_path(app_dir: Path) -> Path:
+    return app_dir / "mlx_host_process.json"
+
+
+def _mlx_log_path(app_dir: Path) -> Path:
+    return app_dir / "mlx_host.log"
+
+
+def _read_mlx_state(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _write_mlx_state(path: Path, state: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+
+def _remove_mlx_state(path: Path) -> None:
+    if path.exists():
+        path.unlink()
+
+
+def _pid_is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _endpoint_is_reachable(url: str, *, host_override: str | None = None, timeout: float = 0.5) -> bool:
+    parsed = urlparse(url)
+    host = host_override or parsed.hostname or "127.0.0.1"
+    if host == "host.containers.internal":
+        host = "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _resolve_host_mlx_python(cfg: dict, *, project_root: Path, python_executable: str) -> str:
+    stack_cfg = cfg.get("stack") or {}
+    configured = stack_cfg.get("mlx_python")
+    if configured:
+        candidate = Path(configured)
+        if not candidate.is_absolute():
+            candidate = project_root / candidate
+        if candidate.exists():
+            return str(candidate)
+
+    venv_candidate = project_root / ".venv" / "bin" / "python"
+    if venv_candidate.exists():
+        return str(venv_candidate)
+    return python_executable
+
+
+def _build_host_mlx_command(cfg: dict, *, project_root: Path, python_executable: str) -> list[str]:
+    stack_cfg = cfg.get("stack") or {}
+    model_path = stack_cfg.get("mlx_model_path", "models/local-mlx")
+    bind_host = stack_cfg.get("mlx_bind_host", "0.0.0.0")
+    port = str(stack_cfg.get("mlx_port", 8081))
+    resolved_python = _resolve_host_mlx_python(cfg, project_root=project_root, python_executable=python_executable)
+
+    model_path_obj = Path(model_path)
+    if not model_path_obj.is_absolute():
+        model_path_obj = project_root / model_path_obj
+
+    return [
+        resolved_python,
+        "-m",
+        "mlx_lm",
+        "server",
+        "--model",
+        str(model_path_obj),
+        "--host",
+        bind_host,
+        "--port",
+        port,
+    ]
+
+
+def _ensure_host_mlx_running(
+    cfg: dict,
+    *,
+    app_dir: Path,
+    project_root: Path,
+    python_executable: str,
+    popen_fn=subprocess.Popen,
+    sleep_fn=time.sleep,
+    endpoint_reachable_fn=_endpoint_is_reachable,
+    pid_is_alive_fn=_pid_is_alive,
+) -> int:
+    stack_cfg = cfg.get("stack") or {}
+    mlx_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8081/v1")
+    state_path = _mlx_state_path(app_dir)
+    log_path = _mlx_log_path(app_dir)
+
+    if endpoint_reachable_fn(mlx_api_base):
+        print(f"[ai-dev up] Host MLX endpoint already reachable at {mlx_api_base}.", file=sys.stderr)
+        return 0
+
+    state = _read_mlx_state(state_path)
+    if state and pid_is_alive_fn(int(state.get("pid", -1))):
+        wait_seconds = 15.0
+        deadline = time.time() + wait_seconds
+        while time.time() < deadline:
+            if endpoint_reachable_fn(mlx_api_base):
+                print(f"[ai-dev up] Managed MLX host process is now reachable at {mlx_api_base}.", file=sys.stderr)
+                return 0
+            sleep_fn(0.25)
+        print(
+            "[ai-dev up] Found a managed MLX host process but the endpoint is still unreachable. "
+            f"See log: {log_path}",
+            file=sys.stderr,
+        )
+        return 2
+
+    _remove_mlx_state(state_path)
+    cmd = _build_host_mlx_command(cfg, project_root=project_root, python_executable=python_executable)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as log_file:
+        proc = popen_fn(
+            cmd,
+            cwd=str(project_root),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+    _write_mlx_state(
+        state_path,
+        {
+            "pid": proc.pid,
+            "api_base": mlx_api_base,
+            "command": cmd,
+        },
+    )
+
+    deadline = time.time() + 30.0
+    while time.time() < deadline:
+        if endpoint_reachable_fn(mlx_api_base):
+            print(f"[ai-dev up] Started host MLX server at {mlx_api_base} (pid {proc.pid}).", file=sys.stderr)
+            return 0
+        if proc.poll() is not None:
+            print(
+                "[ai-dev up] Failed to start host MLX server. "
+                f"Process exited with code {proc.returncode}. See log: {log_path}",
+                file=sys.stderr,
+            )
+            _remove_mlx_state(state_path)
+            return 2
+        sleep_fn(0.25)
+
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except OSError:
+        pass
+    _remove_mlx_state(state_path)
+    print(
+        "[ai-dev up] Timed out waiting for host MLX server to become reachable. "
+        f"See log: {log_path}",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def _stop_managed_host_mlx(app_dir: Path, *, pid_is_alive_fn=_pid_is_alive) -> int:
+    state_path = _mlx_state_path(app_dir)
+    state = _read_mlx_state(state_path)
+    if not state:
+        return 0
+
+    pid = int(state.get("pid", -1))
+    if pid > 0 and pid_is_alive_fn(pid):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    _remove_mlx_state(state_path)
+    print(f"[ai-dev down] Stopped managed host MLX process (pid {pid}).", file=sys.stderr)
+    return 0
+
+
+def command_up(
+    args,
+    *,
+    compose_command_fn,
+    run_fn,
+    load_config_fn,
+    app_dir: Path,
+    project_root: Path,
+    python_executable: str,
+    popen_fn=subprocess.Popen,
+    sleep_fn=time.sleep,
+    endpoint_reachable_fn=_endpoint_is_reachable,
+    pid_is_alive_fn=_pid_is_alive,
+) -> int:
+    cfg = load_config_fn()
+    rc = _ensure_host_mlx_running(
+        cfg,
+        app_dir=app_dir,
+        project_root=project_root,
+        python_executable=python_executable,
+        popen_fn=popen_fn,
+        sleep_fn=sleep_fn,
+        endpoint_reachable_fn=endpoint_reachable_fn,
+        pid_is_alive_fn=pid_is_alive_fn,
+    )
+    if rc != 0:
+        return rc
     cmd = compose_command_fn() + ["up", "-d"]
     if args.with_optional:
         cmd.extend(["--profile", "optional"])
     return run_fn(cmd)
 
 
-def command_down(_, *, compose_command_fn, run_fn) -> int:
+def command_down(_, *, compose_command_fn, run_fn, app_dir: Path, pid_is_alive_fn=_pid_is_alive) -> int:
     cmd = compose_command_fn() + ["down"]
-    return run_fn(cmd)
+    rc = run_fn(cmd)
+    stop_rc = _stop_managed_host_mlx(app_dir, pid_is_alive_fn=pid_is_alive_fn)
+    return rc or stop_rc
 
 
-def command_status(_, *, compose_command_fn, run_fn) -> int:
+def command_status(_, *, compose_command_fn, run_fn, load_config_fn, app_dir: Path, endpoint_reachable_fn=_endpoint_is_reachable) -> int:
     cmd = compose_command_fn() + ["ps"]
-    return run_fn(cmd)
+    rc = run_fn(cmd)
+    cfg = load_config_fn()
+    stack_cfg = cfg.get("stack") or {}
+    mlx_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8081/v1")
+    state = _read_mlx_state(_mlx_state_path(app_dir))
+    reachable = endpoint_reachable_fn(mlx_api_base)
+    status = "reachable" if reachable else "unreachable"
+    pid_suffix = f", managed pid={state.get('pid')}" if state else ""
+    print(f"host-mlx: {status} ({mlx_api_base}{pid_suffix})")
+    return rc
 
 
 def generate_litellm_config(cfg: dict, default_models: list[dict]) -> str:
     models = cfg.get("models") or default_models
+    stack_cfg = cfg.get("stack") or {}
+    default_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8081/v1")
     lines = ["model_list:"]
     for m in models:
         name = m.get("name", "local-mlx")
         backend_model = m.get("backend_model", "openai/local-mlx")
-        api_base = m.get("api_base", "http://mlx:8081/v1")
+        api_base = m.get("api_base") or default_api_base
         api_key = m.get("api_key", "local-dev")
         lines.extend(
             [

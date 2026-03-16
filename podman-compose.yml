@@ -1,15 +1,6 @@
 version: '3.8'
 
 services:
-  mlx:
-    build:
-      context: .
-      dockerfile: mlx/Dockerfile
-    container_name: ai-dev-mlx
-    ports:
-      - "8081:8081"
-    command: ["/bin/bash", "/app/mlx/entrypoint.sh"]
-
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: ai-dev-litellm
@@ -18,8 +9,6 @@ services:
     volumes:
       - ./litellm_config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
-    depends_on:
-      - mlx
 
   qdrant:
     image: qdrant/qdrant:latest

@@ -382,6 +382,10 @@ following items remain incomplete for production-grade behavior.
 
 ### Current remaining gaps (explicit status)
 
+- [ ] **G.1 Host-native MLX runtime alignment**
+  - move operational guidance away from containerized MLX inference toward a host-native Apple Silicon runtime.
+  - integrate `mlx-lm` installation into the documented `uv` environment bootstrap path.
+  - update docs/config guidance so LiteLLM and related services target a host MLX endpoint instead of assuming `mlx.core` is available inside the Podman Linux container.
 - [x] **B.1 Real backend KV reuse**
   - backend-integrated KV probing is now implemented in `agent/cache_kv.py` (no orchestration-only metadata fallback path for reuse outcomes).
 - [x] **E.1 Template/runtime duplication reduction completion**
@@ -902,3 +906,32 @@ following items remain incomplete for production-grade behavior.
   - removes the last large block of hand-maintained passthrough imports/`__all__` duplication.
 - Expanded `tests/test_cli_facade.py` so the entire facade export contract is verified rather than a small spot-check subset.
 - This completes the remaining F.1 modularization gap while preserving the public `ai_dev.cli` import surface for existing tests/callers.
+
+### G) Host-native MLX runtime alignment
+
+## Goal
+Run MLX inference where `mlx.core` is supported: in a host-native Apple Silicon Python
+environment, while preserving the rest of the local orchestration workflow.
+
+## Implementation
+
+1. Document MLX as a host runtime, not a Linux container runtime.
+2. Make `uv` setup with `mlx-lm` a first-class bootstrap path.
+3. Update stack guidance so LiteLLM and related services call a host MLX endpoint.
+4. Add follow-on guardrails/template changes to fail fast when MLX is started from an unsupported container runtime.
+
+## Done when
+- `mlx.core` is verifiably importable from the local uv environment.
+- Documentation no longer implies Podman can provide a working MLX backend.
+- Operators have a clear supported path for running MLX on-host and connecting the rest of the stack to it.
+- `ai-dev up/down/status` can automatically manage and report the host MLX process.
+
+### Completion notes
+
+- Added a `mlx-host` optional dependency extra in `pyproject.toml` so uv/venv installs can include `mlx-lm` directly.
+- Updated `README.md` to recommend `uv venv` + `uv pip install -e .[mlx-host]` and to document that MLX serving must run on the macOS host.
+- Updated `ai_dev/core/stack_ops.py` so generated LiteLLM config prefers the configured host `mlx_api_base`, and `ai-dev up/down/status` now manage and report a host MLX process automatically.
+- Updated `ai_dev/core/stack_ops.py` so generated LiteLLM config prefers the configured host `mlx_api_base`, and `ai-dev up` now emits an explicit host-runtime reminder before starting compose services.
+- Updated checked-in runtime/config artifacts (`litellm_config.yaml`, `.ai-dev/config.json`, `podman-compose.yml`) to remove the in-compose MLX dependency and point LiteLLM at the host MLX endpoint.
+- Updated `README.md` to document automatic host MLX startup, managed process state/log files, and the config knobs used to customize the managed MLX process.
+- This completes the host-native MLX automation path needed to close the G.1 roadmap gap.

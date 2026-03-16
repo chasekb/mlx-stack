@@ -24,12 +24,31 @@ It provides an `ai-dev` CLI to:
 
 ## Quick start
 
-### 1) Create a virtual environment and install
+### 1) Create a uv environment and install
+
+Recommended on Apple Silicon macOS:
+
+```bash
+uv venv
+source .venv/bin/activate
+uv pip install -e .[mlx-host]
+```
+
+This installs the project plus `mlx-lm` into the local uv-managed environment so you can run
+the MLX server directly on the host.
+
+If you prefer standard `venv`, the equivalent is:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e .[mlx-host]
+```
+
+Verify the MLX runtime before starting inference services:
+
+```bash
+python -c "import mlx.core as mx; print(mx.__name__)"
 ```
 
 ### 2) Initialize the stack files
@@ -78,6 +97,51 @@ Without this step, local inference endpoints may start but won’t have converte
 ```bash
 ai-dev up
 ```
+
+`ai-dev up` now attempts to automatically start a managed host MLX server from the local
+project environment before starting the Podman services. By default it prefers:
+
+- `stack.mlx_python` from `.ai-dev/config.json` when configured
+- otherwise `./.venv/bin/python` when present
+- otherwise the current CLI Python executable
+
+It records the managed process under `.ai-dev/mlx_host_process.json` and writes MLX server
+output to `.ai-dev/mlx_host.log`.
+
+### Important MLX runtime note
+
+`mlx` / `mlx-lm` must run on the Apple Silicon macOS host, not inside the Podman Linux
+container. A Linux container image based on `python:3.11-slim` will not provide a working
+`mlx.core` runtime, which leads to errors such as:
+
+```text
+ModuleNotFoundError: No module named 'mlx.core'
+```
+
+Recommended flow:
+
+```bash
+# 1) create the host env and install MLX tooling
+uv venv
+source .venv/bin/activate
+uv pip install -e .[mlx-host]
+
+# 2) convert/pull model artifacts if needed
+ai-dev pull-models
+
+# 3) start the stack; ai-dev will auto-start the host MLX server if needed
+ai-dev up
+```
+
+If you need to customize the managed host MLX process, set these fields in `.ai-dev/config.json`:
+
+- `stack.mlx_api_base`
+- `stack.mlx_python`
+- `stack.mlx_model_path`
+- `stack.mlx_bind_host`
+- `stack.mlx_port`
+
+`ai-dev down` also stops the managed host MLX process when it was started by the app.
 
 ### 6) Generate Cursor-compatible API settings
 
@@ -768,7 +832,7 @@ This repository includes `.github/workflows/build.yml` with a remote build smoke
 
 ```bash
 python3 -m pip install --upgrade pip
-pip3 install -e .
+pip3 install -e .[mlx-host]
 ai-dev --help
 ai-dev init
 ai-dev configure-cursor

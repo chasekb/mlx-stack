@@ -10,6 +10,7 @@ DEFAULT_CONFIG = {
     "created_at": "",
     "stack": {
         "mlx_port": 8081,
+        "mlx_api_base": "http://host.containers.internal:8081/v1",
         "litellm_port": 4000,
         "spec_router_port": 8092,
         "embed_queue_port": 8093,
@@ -19,7 +20,7 @@ DEFAULT_CONFIG = {
         {
             "name": "local-mlx-fast",
             "backend_model": "openai/local-mlx-fast",
-            "api_base": "http://mlx:8081/v1",
+            "api_base": "http://host.containers.internal:8081/v1",
             "api_key": "local-dev",
             "hf_model": "Qwen/Qwen3.5-0.8B",
             "mlx_model": "mlx-community/Qwen3.5-0.8B-4bit",
@@ -29,7 +30,7 @@ DEFAULT_CONFIG = {
         {
             "name": "local-mlx",
             "backend_model": "openai/local-mlx",
-            "api_base": "http://mlx:8081/v1",
+            "api_base": "http://host.containers.internal:8081/v1",
             "api_key": "local-dev",
             "hf_model": "Qwen/Qwen3.5-2B",
             "mlx_model": "mlx-community/Qwen3.5-2B-4bit",
@@ -39,7 +40,7 @@ DEFAULT_CONFIG = {
         {
             "name": "local-mlx-longctx",
             "backend_model": "openai/local-mlx-longctx",
-            "api_base": "http://mlx:8081/v1",
+            "api_base": "http://host.containers.internal:8081/v1",
             "api_key": "local-dev",
             "hf_model": "Qwen/Qwen3.5-4B",
             "mlx_model": "mlx-community/Qwen3.5-4B-4bit",

@@ -69,15 +69,34 @@ def _compose_command() -> list[str]:
 
 
 def command_up(args: argparse.Namespace) -> int:
-    return core_stack_ops.command_up(args, compose_command_fn=_compose_command, run_fn=run)
+    return core_stack_ops.command_up(
+        args,
+        compose_command_fn=_compose_command,
+        run_fn=run,
+        load_config_fn=load_config,
+        app_dir=APP_DIR,
+        project_root=Path.cwd(),
+        python_executable=sys.executable,
+    )
 
 
 def command_down(args: argparse.Namespace) -> int:
-    return core_stack_ops.command_down(args, compose_command_fn=_compose_command, run_fn=run)
+    return core_stack_ops.command_down(
+        args,
+        compose_command_fn=_compose_command,
+        run_fn=run,
+        app_dir=APP_DIR,
+    )
 
 
 def command_status(args: argparse.Namespace) -> int:
-    return core_stack_ops.command_status(args, compose_command_fn=_compose_command, run_fn=run)
+    return core_stack_ops.command_status(
+        args,
+        compose_command_fn=_compose_command,
+        run_fn=run,
+        load_config_fn=load_config,
+        app_dir=APP_DIR,
+    )
 
 
 def command_pull_models(args: argparse.Namespace) -> int:
