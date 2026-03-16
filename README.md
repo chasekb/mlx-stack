@@ -729,6 +729,15 @@ missing/extra handler drift. Focused tests were added in `tests/test_command_gro
 - unexpected-key rejection
 - non-callable handler-value rejection
 
+Recent CLI facade extraction progress moved the remaining thin compatibility wrappers out of
+the top-level CLI module into:
+
+- `ai_dev/core/cli_facade.py` (legacy helper exports, command wrappers, parser bootstrap wiring)
+
+`ai_dev/cli.py` is now a minimal entrypoint that re-exports the compatibility surface from
+`ai_dev.core.cli_facade` and retains only `main(...)`, which further reduces top-level coupling
+and file size while preserving imports/tests that still reference `ai_dev.cli` symbols.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:

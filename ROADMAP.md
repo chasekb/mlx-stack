@@ -882,3 +882,13 @@ following items remain incomplete for production-grade behavior.
 - Updated `agent/http_api.py` to construct the narrower validated service-layer dependency bundle once at handler build time, while preserving `/tools` access to the broader HTTP context.
 - Updated `agent/http_service.py` to consume the narrower service context type directly, making transport/service responsibilities more explicit and completing the remaining F.3/F.4 boundary-hardening gap.
 - Added focused coverage in `tests/test_agent_http_api.py` to verify service-context construction excludes transport-only fields and preserves required service dependencies.
+
+#### F completion notes (CLI facade extraction tranche)
+
+- Added `ai_dev/core/cli_facade.py` to centralize the remaining compatibility wrapper surface previously still living in `ai_dev/cli.py`:
+  - command wrappers
+  - indexing/retrieval helper re-exports used by tests/callers
+  - parser bootstrap wiring.
+- Updated `ai_dev/cli.py` to become a minimal entrypoint that re-exports facade symbols and retains only `main(...)`.
+- Added focused compatibility coverage in `tests/test_cli_facade.py` to verify key `ai_dev.cli` exports still point at the canonical facade implementations.
+- This further reduces `ai_dev/cli.py` size/coupling and advances F.1 toward full modularization completion while preserving the public CLI module contract.
