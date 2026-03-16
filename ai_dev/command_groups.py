@@ -81,7 +81,7 @@ def register_all_commands(
     p_status.set_defaults(func=handlers["command_status"])
 
     p_pull = sub.add_parser("pull-models", help="Pull/convert configured models into local output paths")
-    p_pull.add_argument("--model", default="Qwen/Qwen3.5-Coder-7B-Instruct", help="Fallback HuggingFace model id")
+    p_pull.add_argument("--model", default="Qwen/Qwen3.5-4B", help="Fallback HuggingFace model id")
     p_pull.add_argument("--quantization", default="4", help="Quantization bits for mlx_lm.convert")
     p_pull.add_argument("--profile", default=None, help="Optional model profile name from .ai-dev/config.json")
     p_pull.add_argument("--dry-run", action="store_true", help="Print conversion commands without executing")

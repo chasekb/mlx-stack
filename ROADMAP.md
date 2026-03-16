@@ -63,6 +63,7 @@ Serve and route multiple local models through LiteLLM.
 - Added `ai-dev models` to list model profiles.
 - Added tag-based route policy with `ai-dev route-model <task_tag>`.
 - Added `ai-dev configure-cursor --task-tag <tag>` to select routed model for Cursor settings.
+- Corrected the default generated Qwen model profile links to current valid Qwen 3.5 Hugging Face repos (`0.8B`, `2B`, `4B`) after the previous `Qwen3.5-Coder-*` source repos failed during `pull-models` conversion.
 
 ---
 

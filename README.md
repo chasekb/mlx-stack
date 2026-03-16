@@ -68,7 +68,7 @@ Useful variants:
 ai-dev pull-models --profile local-mlx
 
 # Override fallback model/quantization when profile fields are absent
-ai-dev pull-models --model Qwen/Qwen3.5-Coder-7B-Instruct --quantization 4
+ai-dev pull-models --model Qwen/Qwen3.5-4B --quantization 4
 ```
 
 Without this step, local inference endpoints may start but won’t have converted local model artifacts to serve.
@@ -98,6 +98,12 @@ ai-dev models
 ```
 
 This milestone enables multi-model configuration through `.ai-dev/config.json`, and `ai-dev init` now regenerates `litellm_config.yaml` from those model profiles.
+
+The default generated MLX profiles now target the smallest currently available Qwen 3.5 base models from the Hugging Face `Qwen/qwen35` collection:
+
+- `local-mlx-fast` → `Qwen/Qwen3.5-0.8B`
+- `local-mlx` → `Qwen/Qwen3.5-2B`
+- `local-mlx-longctx` → `Qwen/Qwen3.5-4B`
 
 ### 9) Route model selection by task tag
 
