@@ -385,8 +385,8 @@ following items remain incomplete for production-grade behavior.
   - backend-integrated KV probing is now implemented in `agent/cache_kv.py` (no orchestration-only metadata fallback path for reuse outcomes).
 - [x] **E.1 Template/runtime duplication reduction completion**
   - template constants are now sourced from canonical runtime/template files, removing duplicated embedded service template literals in `ai_dev/templates/service_templates.py`.
-- [~] **F.1 Full `ai_dev/cli.py` modularization completion**
-  - partial extractions are complete (`ai_dev/core/*`), and parser bootstrap is now delegated through `ai_dev/core/handler_ops.py`; final residual CLI wrapper reduction is still in progress.
+- [x] **F.1 Full `ai_dev/cli.py` modularization completion**
+  - `ai_dev/cli.py` is now reduced to a minimal public entrypoint that bulk re-exports the compatibility surface from `ai_dev/core/cli_facade.py` and retains only `main(...)` orchestration.
 - [x] **F.3/F.4 Architecture boundary completion**
   - `agent/server.py` internals are now split into focused modules, HTTP-handler decomposition is completed via `agent/http_api.py`, handler-context contract formalization is added via `agent/contracts.py`, and service-layer boundary formalization is completed by introducing a dedicated validated `AgentHttpServiceContext` consumed by `agent/http_service.py`.
 
@@ -582,7 +582,7 @@ following items remain incomplete for production-grade behavior.
 
 ### F) Codebase refactoring and modularization
 
-1. [~] Refactor `ai_dev/cli.py` into smaller modules (command groups + shared utilities) to reduce coupling and file size.
+1. [x] Refactor `ai_dev/cli.py` into smaller modules (command groups + shared utilities) to reduce coupling and file size.
 2. [x] Extract embedded service templates/constants from `ai_dev/cli.py` into dedicated template files or a template package.
 3. Split `agent/server.py` into focused modules (cache, kv-cache, tool execution, HTTP handlers) to improve maintainability.
 4. Add lightweight architecture boundaries (e.g., `ai_dev/core`, `ai_dev/services`, `ai_dev/templates`) and update imports accordingly.
@@ -892,3 +892,12 @@ following items remain incomplete for production-grade behavior.
 - Updated `ai_dev/cli.py` to become a minimal entrypoint that re-exports facade symbols and retains only `main(...)`.
 - Added focused compatibility coverage in `tests/test_cli_facade.py` to verify key `ai_dev.cli` exports still point at the canonical facade implementations.
 - This further reduces `ai_dev/cli.py` size/coupling and advances F.1 toward full modularization completion while preserving the public CLI module contract.
+
+#### F completion notes (CLI entrypoint final reduction tranche)
+
+- Simplified `ai_dev/cli.py` to a production-grade minimal entrypoint:
+  - bulk re-exports every compatibility symbol from `ai_dev/core/cli_facade.py`
+  - retains only `main(...)` as the top-level runtime entrypoint
+  - removes the last large block of hand-maintained passthrough imports/`__all__` duplication.
+- Expanded `tests/test_cli_facade.py` so the entire facade export contract is verified rather than a small spot-check subset.
+- This completes the remaining F.1 modularization gap while preserving the public `ai_dev.cli` import surface for existing tests/callers.

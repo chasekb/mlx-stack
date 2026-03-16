@@ -8,11 +8,13 @@ from ai_dev.core import cli_facade
 
 class TestCliFacadeCompatibility(unittest.TestCase):
     def test_cli_re_exports_core_facade_symbols(self) -> None:
-        self.assertIs(cli.build_parser, cli_facade.build_parser)
-        self.assertIs(cli.command_init, cli_facade.command_init)
-        self.assertIs(cli.command_index, cli_facade.command_index)
-        self.assertIs(cli.command_memory_explain, cli_facade.command_memory_explain)
-        self.assertIs(cli.resolve_model_for_tag, cli_facade.resolve_model_for_tag)
+        for name in cli_facade.__all__:
+            with self.subTest(name=name):
+                self.assertIn(name, cli.__all__)
+                self.assertIs(getattr(cli, name), getattr(cli_facade, name))
+
+    def test_cli_all_adds_main_on_top_of_facade_exports(self) -> None:
+        self.assertEqual(cli.__all__, [*cli_facade.__all__, "main"])
 
 
 if __name__ == "__main__":

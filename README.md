@@ -738,6 +738,16 @@ the top-level CLI module into:
 `ai_dev.core.cli_facade` and retains only `main(...)`, which further reduces top-level coupling
 and file size while preserving imports/tests that still reference `ai_dev.cli` symbols.
 
+Recent CLI entrypoint final-reduction progress completed the remaining modularization work by
+making `ai_dev/cli.py` a fully minimal public shim:
+
+- it now bulk re-exports the full compatibility surface directly from `ai_dev/core/cli_facade.py`
+- it retains only `main(...)` as runtime entrypoint logic
+- tests now verify the entire facade export contract instead of a small subset of representative names
+
+This completes the remaining `ai_dev/cli.py` modularization gap while preserving the public
+module contract used by existing tests and external callers.
+
 ## CI Build (GitHub Actions + local)
 
 This repository includes `.github/workflows/build.yml` with a remote build smoke test on:
