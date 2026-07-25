@@ -109,6 +109,12 @@ class TestAgentToolMetrics(unittest.TestCase):
         self.assertEqual(int(row.get("errors", 0)), 1)
         self.assertGreaterEqual(float(row.get("duration_ms_total", 0.0)), 0.0)
 
+    def test_autonomous_mode_fails_loudly(self) -> None:
+        out = agent_server.run_agent_task({"task": "plan and execute", "autonomous": True})
+
+        self.assertFalse(out.get("ok"))
+        self.assertEqual(out.get("error"), "autonomous_planning_not_supported")
+
 
 if __name__ == "__main__":
     unittest.main()

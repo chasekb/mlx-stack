@@ -5,6 +5,7 @@ import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 def tokenize_for_spec(text: str) -> list[str]:
@@ -141,6 +142,7 @@ def command_embed_stats(args) -> int:
         return 2
 
     if args.json:
+        out["local_embedding_sink"] = summarize_local_embedding_sink(Path(".ai-dev/embeddings.jsonl"))
         print(json.dumps(out, indent=2))
         return 0
 
@@ -151,4 +153,31 @@ def command_embed_stats(args) -> int:
     print(f"- in_progress: {stats.get('in_progress', 0)}")
     print(f"- done: {stats.get('done', 0)}")
     print(f"- dead_letter: {stats.get('dead_letter', 0)}")
+    sink = summarize_local_embedding_sink(Path(".ai-dev/embeddings.jsonl"))
+    print("Local embedding sink:")
+    print(f"- records: {sink.get('records', 0)}")
+    print(f"- last_vector_backend: {sink.get('last_vector_backend', 'missing')}")
+    print(f"- last_embedding_model: {sink.get('last_embedding_model', '')}")
     return 0
+
+
+def summarize_local_embedding_sink(path: Path) -> dict:
+    if not path.exists() or not path.is_file():
+        return {"records": 0, "last_vector_backend": "missing"}
+    records = 0
+    last: dict = {}
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        records += 1
+        last = parsed if isinstance(parsed, dict) else {}
+    return {
+        "records": records,
+        "last_vector_backend": str(last.get("vector_backend", "missing")),
+        "last_embedding_model": str(last.get("embedding_model", "")),
+        "last_vector_dim": int(last.get("vector_dim", 0) or 0),
+    }

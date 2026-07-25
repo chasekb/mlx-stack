@@ -34,6 +34,27 @@ def run_agent_task(
     }
     emit_event_fn("run_started", run_id=run_id, dry_run=dry_run, max_steps=max_steps, task=task[:300])
 
+    if bool(payload.get("autonomous", False)) or str(payload.get("mode", "")).strip() == "autonomous":
+        result = {
+            "ok": False,
+            "error": "autonomous_planning_not_supported",
+            "detail": "agent service executes caller-provided plans; use a Hermes/Codex/Claude agent for autonomous planning.",
+        }
+        trace["steps"].append({"tool": "unsupported_autonomy", "result": result})
+        record_tool_metrics_fn("unsupported_autonomy", False, 0.0, result["error"])
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        run_path = runs_dir / f"{run_id}.json"
+        run_path.write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
+        emit_event_fn("run_rejected", run_id=run_id, reason=result["error"])
+        return {
+            **result,
+            "run_id": run_id,
+            "run_path": str(run_path.relative_to(root)),
+            "step_count": len(trace["steps"]),
+            "dry_run": dry_run,
+            "steps": trace["steps"],
+        }
+
     if not isinstance(plan, list) or not plan:
         trace["steps"].append({"tool": "noop", "result": {"ok": True, "detail": "No plan steps provided"}})
         record_tool_metrics_fn(tool="noop", ok=True, duration_ms=0.0, error="")

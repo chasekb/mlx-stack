@@ -121,14 +121,14 @@ def _build_host_mlx_command(cfg: dict, *, project_root: Path, python_executable:
     stack_cfg = cfg.get("stack") or {}
     model_path = stack_cfg.get("mlx_model_path", "models/local-mlx")
     bind_host = stack_cfg.get("mlx_bind_host", "0.0.0.0")
-    port = str(stack_cfg.get("mlx_port", 8081))
+    port = str(stack_cfg.get("mlx_port", 8082))
     resolved_python = _resolve_host_mlx_python(cfg, project_root=project_root, python_executable=python_executable)
 
     model_path_obj = Path(model_path)
     if not model_path_obj.is_absolute():
         model_path_obj = project_root / model_path_obj
 
-    return [
+    cmd = [
         resolved_python,
         "-m",
         "mlx_lm",
@@ -139,6 +139,81 @@ def _build_host_mlx_command(cfg: dict, *, project_root: Path, python_executable:
         bind_host,
         "--port",
         port,
+    ]
+
+    option_map = (
+        ("mlx_prompt_cache_size", "--prompt-cache-size"),
+        ("mlx_prompt_cache_bytes", "--prompt-cache-bytes"),
+        ("mlx_decode_concurrency", "--decode-concurrency"),
+        ("mlx_prompt_concurrency", "--prompt-concurrency"),
+        ("mlx_num_draft_tokens", "--num-draft-tokens"),
+    )
+    for cfg_key, flag in option_map:
+        value = stack_cfg.get(cfg_key)
+        if value not in (None, "", 0, "0"):
+            cmd.extend([flag, str(value)])
+
+    draft_model_path = str(stack_cfg.get("mlx_draft_model_path", "") or "").strip()
+    if draft_model_path:
+        draft_model_path_obj = Path(draft_model_path)
+        if not draft_model_path_obj.is_absolute():
+            draft_model_path_obj = project_root / draft_model_path_obj
+        cmd.extend(["--draft-model", str(draft_model_path_obj)])
+
+    return cmd
+
+
+def _host_url_from_port(port: object, path: str = "/health") -> str:
+    return f"http://localhost:{port}{path}"
+
+
+def _stack_status_lines(cfg: dict, *, app_dir: Path, endpoint_reachable_fn=_endpoint_is_reachable) -> list[str]:
+    stack_cfg = cfg.get("stack") or {}
+    mlx_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8082/v1")
+    state = _read_mlx_state(_mlx_state_path(app_dir))
+    host_mlx_reachable = endpoint_reachable_fn(mlx_api_base)
+    host_mlx_status = "reachable" if host_mlx_reachable else "unreachable"
+    pid_suffix = f", managed pid={state.get('pid')}" if state else ""
+
+    acceleration = {
+        "prompt_cache_size": stack_cfg.get("mlx_prompt_cache_size", ""),
+        "prompt_cache_bytes": stack_cfg.get("mlx_prompt_cache_bytes", ""),
+        "decode_concurrency": stack_cfg.get("mlx_decode_concurrency", ""),
+        "prompt_concurrency": stack_cfg.get("mlx_prompt_concurrency", ""),
+        "draft_model_path": stack_cfg.get("mlx_draft_model_path", ""),
+        "num_draft_tokens": stack_cfg.get("mlx_num_draft_tokens", 0),
+    }
+
+    litellm_url = _host_url_from_port(stack_cfg.get("litellm_port", 4000), "/health")
+    agent_url = _host_url_from_port(8091, "/health")
+    rag_url = _host_url_from_port(8090, "/health")
+    spec_url = _host_url_from_port(stack_cfg.get("spec_router_port", 8092), "/health")
+    queue_url = _host_url_from_port(stack_cfg.get("embed_queue_port", 8093), "/health")
+    qdrant_url = _host_url_from_port(6333, "/")
+
+    def state_for(url: str) -> str:
+        return "reachable" if endpoint_reachable_fn(url) else "unreachable"
+
+    return [
+        f"host-mlx: {host_mlx_status} ({mlx_api_base}{pid_suffix})",
+        "host-mlx acceleration: " + json.dumps(acceleration, sort_keys=True),
+        f"litellm: {state_for(litellm_url)} ({litellm_url})",
+        f"agent: {state_for(agent_url)} ({agent_url})",
+        f"spec-router: {state_for(spec_url)} ({spec_url})",
+        f"embed-queue: {state_for(queue_url)} ({queue_url})",
+        f"rag: {state_for(rag_url)} ({rag_url})",
+        f"qdrant: {state_for(qdrant_url)} ({qdrant_url})",
+        "embedding: "
+        + json.dumps(
+            {
+                "embed_url": stack_cfg.get("embed_url", "http://litellm:4000/v1/embeddings"),
+                "embed_model": stack_cfg.get("embed_model", "local-embed"),
+                "qdrant_url": stack_cfg.get("qdrant_url", "http://qdrant:6333"),
+                "qdrant_collection": stack_cfg.get("qdrant_collection", "ai_dev_embeddings"),
+                "force_fake_embed": bool(stack_cfg.get("force_fake_embed", False)),
+            },
+            sort_keys=True,
+        ),
     ]
 
 
@@ -154,7 +229,7 @@ def _ensure_host_mlx_running(
     pid_is_alive_fn=_pid_is_alive,
 ) -> int:
     stack_cfg = cfg.get("stack") or {}
-    mlx_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8081/v1")
+    mlx_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8082/v1")
     state_path = _mlx_state_path(app_dir)
     log_path = _mlx_log_path(app_dir)
 
@@ -303,20 +378,15 @@ def command_status(_, *, compose_command_fn, run_fn, load_config_fn, app_dir: Pa
     cmd = compose_command_fn() + ["ps"]
     rc = run_fn(cmd)
     cfg = load_config_fn()
-    stack_cfg = cfg.get("stack") or {}
-    mlx_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8081/v1")
-    state = _read_mlx_state(_mlx_state_path(app_dir))
-    reachable = endpoint_reachable_fn(mlx_api_base)
-    status = "reachable" if reachable else "unreachable"
-    pid_suffix = f", managed pid={state.get('pid')}" if state else ""
-    print(f"host-mlx: {status} ({mlx_api_base}{pid_suffix})")
+    for line in _stack_status_lines(cfg, app_dir=app_dir, endpoint_reachable_fn=endpoint_reachable_fn):
+        print(line)
     return rc
 
 
 def generate_litellm_config(cfg: dict, default_models: list[dict]) -> str:
     models = cfg.get("models") or default_models
     stack_cfg = cfg.get("stack") or {}
-    default_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8081/v1")
+    default_api_base = stack_cfg.get("mlx_api_base", "http://host.containers.internal:8082/v1")
     lines = ["model_list:"]
     for m in models:
         name = m.get("name", "local-mlx")
@@ -334,7 +404,18 @@ def generate_litellm_config(cfg: dict, default_models: list[dict]) -> str:
         )
 
     master_key = cfg.get("cursor", {}).get("api_key", "local-dev")
-    lines.extend(["", "general_settings:", f"  master_key: {master_key}"])
+    lines.extend(
+        [
+            "",
+            "litellm_settings:",
+            "  request_timeout: 120",
+            "  num_retries: 2",
+            "  drop_params: true",
+            "",
+            "general_settings:",
+            f"  master_key: {master_key}",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -352,6 +433,9 @@ def command_pull_models(args, *, load_config_fn, python_executable: str, subproc
     commands: list[tuple[str, Path, list[str]]] = []
     for m in profiles:
         name = m.get("name", "local-mlx")
+        if m.get("embedding") and not m.get("hf_model"):
+            print(f"[pull-models] Skipping embedding-only profile '{name}' (no hf_model conversion target).")
+            continue
         hf_model = m.get("hf_model") or args.model
         q = m.get("quantization", f"{args.quantization}bit").replace("bit", "")
         output_path = m.get("output_path", f"models/{name}")
@@ -384,13 +468,18 @@ def command_pull_models(args, *, load_config_fn, python_executable: str, subproc
     rc = 0
     for name, output_path_path, cmd in commands:
         if output_path_path.exists():
-            if output_path_path.is_dir() and not any(output_path_path.iterdir()):
+            if output_path_path.is_dir():
+                if any(output_path_path.iterdir()):
+                    print(
+                        f"[pull-models] Output path already exists for profile '{name}': {output_path_path}. Skipping."
+                    )
+                    continue
                 output_path_path.rmdir()
             else:
                 rc = 2
                 print(
-                    f"[pull-models] Output path already exists for profile '{name}': {output_path_path}. "
-                    "Remove it (or set a different output_path in .ai-dev/config.json) and retry.",
+                    f"[pull-models] Output path already exists as a file for profile '{name}': {output_path_path}. "
+                    "Remove it or set a different output_path in .ai-dev/config.json and retry.",
                     file=sys.stderr,
                 )
                 if not args.continue_on_error:

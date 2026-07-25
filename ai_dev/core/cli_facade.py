@@ -238,6 +238,7 @@ def _score_chunk_match(
     current_branch: str,
     include_changed_bias: bool,
     now_ts: float,
+    semantic_scores: dict[str, dict] | None = None,
 ) -> dict | None:
     return core_retrieval.score_chunk_match(
         chunk=chunk,
@@ -247,6 +248,7 @@ def _score_chunk_match(
         current_branch=current_branch,
         include_changed_bias=include_changed_bias,
         now_ts=now_ts,
+        semantic_scores=semantic_scores,
     )
 
 

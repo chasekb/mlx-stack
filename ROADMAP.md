@@ -63,7 +63,7 @@ Serve and route multiple local models through LiteLLM.
 - Added `ai-dev models` to list model profiles.
 - Added tag-based route policy with `ai-dev route-model <task_tag>`.
 - Added `ai-dev configure-cursor --task-tag <tag>` to select routed model for Cursor settings.
-- Corrected the default generated Qwen model profile links to current valid Qwen 3.5 Hugging Face repos (`0.8B`, `2B`, `4B`) after the previous `Qwen3.5-Coder-*` source repos failed during `pull-models` conversion.
+- Swapped the default generated profiles to a coding-first Qwen 2.5 Coder ladder (`1.5B`, `3B`, `7B`) for the current Apple Silicon MLX stack.
 
 ---
 
@@ -938,3 +938,68 @@ environment, while preserving the rest of the local orchestration workflow.
 - Updated checked-in runtime/config artifacts (`litellm_config.yaml`, `.ai-dev/config.json`, `podman-compose.yml`) to remove the in-compose MLX dependency and point LiteLLM at the host MLX endpoint.
 - Updated `README.md` to document automatic host MLX startup, managed process state/log files, and the config knobs used to customize the managed MLX process.
 - This completes the host-native MLX automation path needed to close the G.1 roadmap gap.
+
+---
+
+## H) Hermes integration backlog recommendation
+
+This is the recommended next project tranche if the goal is to make `mlx-stack` a first-class Hermes-integrated stack rather than a standalone local orchestrator.
+
+### Recommended scope
+
+1. Expose `mlx-stack` as a documented Hermes project profile with a repeatable bootstrap path.
+2. Make the stack observable from Hermes-native status/health checks instead of requiring manual endpoint probing.
+3. Add a durable control loop for the managed host MLX process and agent runtime so Hermes can detect, restart, and report failures cleanly.
+4. Add a lightweight regression suite for Hermes integration points: config generation, status output, and endpoint reachability.
+5. Keep the integration minimal and compatibility-first; do not rework the stack architecture while it is already healthy.
+
+### Execution criteria
+
+Treat the tranche as ready to execute only when all of the following are true:
+
+- The existing `ai-dev up/down/status` flow is already green on the current machine.
+- The host MLX endpoint is stable and reachable on the documented port used by this repo.
+- The repo venv bootstrap path is reproducible without relying on stale shell activation state.
+- The agent container entrypoint and compose mount strategy are already validated.
+- The integration work can be done as additive documentation, status wiring, or thin compatibility wrappers.
+
+### Suggested implementation order
+
+1. Add Hermes-facing documentation that explains how this stack is bootstrapped, started, checked, and shut down from a Hermes workflow.
+2. Add a project-level Hermes profile or wrapper command that shells into the repo and runs the supported `ai-dev` commands consistently.
+3. Add a simple Hermes health/status view that reports:
+   - repo bootstrap readiness
+   - host MLX reachability
+   - agent health
+   - service start/stop state
+4. Add regression tests for the integration surface so the Hermes-facing behavior does not drift.
+5. Update any remaining references that still describe this stack as container-native MLX inference.
+
+### Closeout criteria
+
+Consider the Hermes integration tranche complete only when all of the following are true:
+
+- A new user can follow one documented path to start the stack inside Hermes without guesswork.
+- Hermes status reporting clearly distinguishes:
+  - host MLX healthy/unhealthy
+  - agent healthy/unhealthy
+  - stack partially up vs fully up
+- The documented path does not require manual editing of ports, paths, or environment variables for the common case.
+- The integration tests pass and the repo validation gates still pass:
+  - `python3 tools/check_template_parity.py`
+  - `python3 -m unittest discover -s tests -p 'test_*.py'`
+  - `python3 -m compileall ai_dev spec_router embedding_queue embedding_worker agent tests`
+- The README and roadmap both describe the Hermes integration path clearly enough that a future operator can repeat it without the original context.
+
+### Completion notes
+
+- Added native `mlx-lm` server option wiring in `ai_dev/core/stack_ops.py` for prompt cache size/bytes, decode/prompt concurrency, draft model path, and draft token count.
+- Extended `.ai-dev/config.json` and default config schema with explicit native MLX acceleration keys, an explicit `local-embed` route, and an optional high-memory `local-mlx-agentic` Qwen3-Coder profile that is not selected by the default route.
+- Hardened `ai-dev status` into the Hermes-facing health surface: host MLX, LiteLLM, agent, spec-router, embed-queue, RAG, Qdrant, acceleration config, and embedding route are reported separately so partial-up states are visible.
+- Updated LiteLLM generated config with request timeout/retry/drop-param settings while preserving local OpenAI-compatible model aliases.
+- Wired embed-worker compose environment and command arguments for `local-embed`, schema/migration files, Qdrant URL/collection, and explicit fallback controls.
+- Made `ai-dev embed-stats` summarize the local embedding JSONL sink and surface the most recent vector backend (`local_http` vs `deterministic_fallback`).
+- Deprecated the container-native MLX Dockerfile/entrypoint as guardrail placeholders; the supported runtime is host-native Apple Silicon MLX.
+- Added hybrid retrieval support that preserves lexical/symbol fallback and incorporates `.ai-dev/embeddings.jsonl` vector scores when matching semantic vectors exist, with `memory explain` reporting semantic fallback/source details.
+- Clarified the built-in agent service as a safe caller-provided-plan tool runner; explicit autonomous-mode requests now fail loudly with `autonomous_planning_not_supported`.
+- Updated README with the Hermes project workflow for `project_id=mlx-stack`, native MLX acceleration guidance, embedding fallback semantics, optional Qwen3-Coder profile guidance, hybrid retrieval diagnostics, and agent-service non-goals.

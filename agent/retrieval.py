@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Optional
+
+from ai_dev.core.retrieval import load_semantic_scores
 
 
 def tokenize(text: str) -> list[str]:
@@ -11,9 +14,11 @@ def tokenize(text: str) -> list[str]:
 def retrieve(index_obj: dict, query: str, top_k: int = 5, path_prefix: Optional[str] = None) -> dict:
     query_terms = set(tokenize(query))
     if not query_terms:
-        return {"query": query, "top_symbols": [], "top_chunks": []}
+        return {"query": query, "semantic": {"matches": 0, "fallback": "empty_query"}, "top_symbols": [], "top_chunks": []}
 
     path_prefix = path_prefix or ""
+    root = Path(__file__).resolve().parents[1]
+    semantic_scores = load_semantic_scores(query, root / ".ai-dev" / "embeddings.jsonl", path_prefix=path_prefix)
 
     symbol_results = []
     for s in index_obj.get("symbols", []):
@@ -35,10 +40,17 @@ def retrieve(index_obj: dict, query: str, top_k: int = 5, path_prefix: Optional[
         p = c.get("path", "")
         if path_prefix and p.startswith(path_prefix):
             score += 2.0
+        semantic_info = semantic_scores.get(p, {}) if isinstance(semantic_scores.get(p, {}), dict) else {}
+        semantic_score = float(semantic_info.get("score", 0.0) or 0.0)
+        score += semantic_score
         if score > 0:
             chunk_results.append(
                 {
-                    "score": score,
+                    "score": round(score, 4),
+                    "score_breakdown": {
+                        "semantic": round(semantic_score, 4),
+                        "semantic_backend": semantic_info.get("backend", "missing"),
+                    },
                     "path": p,
                     "chunk_id": c.get("chunk_id"),
                     "start_line": c.get("start_line"),
@@ -52,6 +64,10 @@ def retrieve(index_obj: dict, query: str, top_k: int = 5, path_prefix: Optional[
 
     return {
         "query": query,
+        "semantic": {
+            "matches": len(semantic_scores),
+            "fallback": "lexical_symbol_only" if not semantic_scores else "hybrid_jsonl",
+        },
         "top_symbols": symbol_results[:top_k],
         "top_chunks": chunk_results[:top_k],
     }

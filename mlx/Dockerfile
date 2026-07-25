@@ -1,10 +1,6 @@
-FROM python:3.11-slim
+FROM scratch
 
-RUN apt-get update && apt-get install -y --no-install-recommends     git curl ca-certificates bash     && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir mlx-lm
-
-WORKDIR /app
-COPY mlx /app/mlx
-
-EXPOSE 8081
+# Deprecated placeholder.
+# MLX inference is supported only from the Apple Silicon macOS host Python
+# environment. Do not build or run a Linux container for mlx.core/mlx-lm.
+# Use: uv pip install -e .[mlx-host] && ai-dev up

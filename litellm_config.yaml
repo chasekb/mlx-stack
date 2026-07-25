@@ -2,18 +2,33 @@ model_list:
   - model_name: local-mlx-fast
     litellm_params:
       model: openai/local-mlx-fast
-      api_base: http://host.containers.internal:8081/v1
+      api_base: http://host.containers.internal:8082/v1
       api_key: local-dev
   - model_name: local-mlx
     litellm_params:
       model: openai/local-mlx
-      api_base: http://host.containers.internal:8081/v1
+      api_base: http://host.containers.internal:8082/v1
       api_key: local-dev
   - model_name: local-mlx-longctx
     litellm_params:
       model: openai/local-mlx-longctx
-      api_base: http://host.containers.internal:8081/v1
+      api_base: http://host.containers.internal:8082/v1
       api_key: local-dev
+  - model_name: local-mlx-agentic
+    litellm_params:
+      model: openai/local-mlx-agentic
+      api_base: http://host.containers.internal:8082/v1
+      api_key: local-dev
+  - model_name: local-embed
+    litellm_params:
+      model: openai/local-embed
+      api_base: http://host.containers.internal:8082/v1
+      api_key: local-dev
+
+litellm_settings:
+  request_timeout: 120
+  num_retries: 2
+  drop_params: true
 
 general_settings:
   master_key: local-dev

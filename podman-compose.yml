@@ -33,8 +33,8 @@ services:
     container_name: ai-dev-agent
     working_dir: /app
     volumes:
-      - ./agent:/app
-    command: ["python", "server.py"]
+      - ./:/app
+    command: ["python", "-m", "agent.server"]
     ports:
       - "8091:8091"
     profiles: ["optional"]
@@ -67,8 +67,20 @@ services:
     working_dir: /app
     volumes:
       - ./embedding_worker:/app
-      - ./embedding_queue:/queue
-    command: ["python", "worker.py", "--queue-url", "http://embed-queue:8093"]
+      - ./.ai-dev:/app/.ai-dev
+    environment:
+      EMBED_URL: "http://litellm:4000/v1/embeddings"
+      EMBED_MODEL: "local-embed"
+      EMBED_SCHEMA_PATH: ".ai-dev/embedding_schema.json"
+      EMBED_MIGRATION_LOG_PATH: ".ai-dev/embedding_migrations.jsonl"
+      QDRANT_URL: "http://qdrant:6333"
+      QDRANT_COLLECTION: "ai_dev_embeddings"
+      QDRANT_ENABLED: "1"
+      FORCE_FAKE_EMBED: "0"
+      ALLOW_SCHEMA_MIGRATE: "0"
+    command: ["python", "worker.py", "--queue-url", "http://embed-queue:8093", "--embed-url", "http://litellm:4000/v1/embeddings", "--embed-model", "local-embed", "--qdrant-url", "http://qdrant:6333", "--qdrant-collection", "ai_dev_embeddings"]
     depends_on:
       - embed-queue
+      - litellm
+      - qdrant
     profiles: ["optional"]

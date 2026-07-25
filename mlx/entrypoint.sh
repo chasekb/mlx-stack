@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_PATH="${MLX_MODEL_PATH:-mlx-community/Qwen2.5-Coder-7B-Instruct-4bit}"
-PORT="${MLX_PORT:-8081}"
+cat >&2 <<'EOF'
+ERROR: container-native MLX inference is deprecated and unsupported.
 
-python -m mlx_lm.server   --model "$MODEL_PATH"   --host 0.0.0.0   --port "$PORT"
+mlx.core/mlx-lm must run in the Apple Silicon macOS host Python environment,
+not inside a Linux Podman container. Use:
+
+  uv venv
+  source .venv/bin/activate
+  uv pip install -e .[mlx-host]
+  ai-dev pull-models
+  ai-dev up
+
+EOF
+exit 2

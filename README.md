@@ -61,8 +61,8 @@ ai-dev init
 
 - `podman-compose.yml`
 - `litellm_config.yaml`
-- `mlx/entrypoint.sh`
-- `mlx/Dockerfile`
+- `mlx/entrypoint.sh` (deprecated guardrail only; not an active MLX runtime)
+- `mlx/Dockerfile` (deprecated guardrail only; not an active MLX runtime)
 - `rag/server.py`
 - `agent/server.py`
 - `.ai-dev/config.json`
@@ -87,10 +87,11 @@ Useful variants:
 ai-dev pull-models --profile local-mlx
 
 # Override fallback model/quantization when profile fields are absent
-ai-dev pull-models --model Qwen/Qwen3.5-4B --quantization 4
+ai-dev pull-models --model Qwen/Qwen2.5-Coder-7B-Instruct --quantization 4
 ```
 
 Without this step, local inference endpoints may start but won’t have converted local model artifacts to serve.
+If an output directory already exists, `pull-models` now skips that profile instead of failing, so reruns are idempotent.
 
 ### 5) Start services
 
@@ -150,11 +151,33 @@ If you need to customize the managed host MLX process, set these fields in `.ai-
 - `stack.mlx_model_path`
 - `stack.mlx_bind_host`
 - `stack.mlx_port`
+- `stack.mlx_prompt_cache_size`
+- `stack.mlx_prompt_cache_bytes`
+- `stack.mlx_decode_concurrency`
+- `stack.mlx_prompt_concurrency`
+- `stack.mlx_draft_model_path`
+- `stack.mlx_num_draft_tokens`
+
+The default host MLX port is `8082` to avoid conflicts with other local services; adjust
+`stack.mlx_port` and `stack.mlx_api_base` together if you want a different port.
+
+Modern `mlx-lm` exposes native prompt-cache and draft-model speculative decoding
+controls. `ai-dev up` passes the configured values directly to the host MLX
+server. The `spec-router` service remains useful for deterministic diagnostics
+and acceptance-loop experiments, but native `mlx-lm` prompt cache/speculative
+decode is the supported production acceleration path.
+
+Use `ai-dev status` to distinguish host MLX, LiteLLM, agent, spec-router,
+embedding queue, RAG, and Qdrant health. The status output also prints the
+configured MLX acceleration knobs and embedding route so Hermes or another
+operator can tell whether the stack is fully up or only partially reachable.
 
 `ai-dev down` also stops the managed host MLX process when it was started by the app.
 If compose teardown fails, `ai-dev down` now performs a best-effort forced cleanup of the
 known Podman containers/pod/network for this project so repeated `up`/`down` cycles can
 recover from partially torn-down stacks.
+The optional `agent` service mounts the repo root and runs `python -m agent.server` so
+package imports resolve correctly inside the container.
 
 ### 6) Generate Cursor-compatible API settings
 
@@ -181,11 +204,16 @@ ai-dev models
 
 This milestone enables multi-model configuration through `.ai-dev/config.json`, and `ai-dev init` now regenerates `litellm_config.yaml` from those model profiles.
 
-The default generated MLX profiles now target the smallest currently available Qwen 3.5 base models from the Hugging Face `Qwen/qwen35` collection:
+The default generated MLX profiles now target a coding-first Qwen 2.5 Coder ladder from the Hugging Face catalog:
 
-- `local-mlx-fast` → `Qwen/Qwen3.5-0.8B`
-- `local-mlx` → `Qwen/Qwen3.5-2B`
-- `local-mlx-longctx` → `Qwen/Qwen3.5-4B`
+- `local-mlx-fast` → `Qwen/Qwen2.5-Coder-1.5B-Instruct`
+- `local-mlx` → `Qwen/Qwen2.5-Coder-3B-Instruct`
+- `local-mlx-longctx` → `Qwen/Qwen2.5-Coder-7B-Instruct`
+
+Two additional non-default profiles are generated for production integration:
+
+- `local-mlx-agentic` → optional high-memory `Qwen3-Coder-30B-A3B-Instruct` MLX profile for agentic/repository-scale coding. It is tagged `agentic` and `optional`, and is **not** selected by the default route.
+- `local-embed` → explicit embedding route used by the background embedding worker. If the backend cannot produce embeddings, the worker records `deterministic_fallback` vectors and exposes that state in events, JSONL records, and `ai-dev embed-stats`.
 
 ### 9) Route model selection by task tag
 
@@ -201,7 +229,7 @@ You can also generate Cursor config using a task tag:
 ai-dev configure-cursor --task-tag fast
 ```
 
-Supported task tags: `default`, `quality`, `fast`, `longctx`, `analysis`.
+Supported task tags: `default`, `quality`, `fast`, `longctx`, `analysis`, `agentic`.
 
 ### 10) Retrieve repo-aware context
 
@@ -256,7 +284,18 @@ python3 -m ai_dev.cli index --once .
 
 ### 11) Function-calling agent loop (Milestone 3 foundation)
 
-The agent service now exposes a JSON tool schema and task-run endpoint:
+The agent service now exposes a JSON tool schema and task-run endpoint. It is a
+safe local tool runner and integration substrate: callers provide the plan, the
+service executes allowed tools with dry-run and trace guardrails, and run traces
+are persisted for audit. It is **not** a full autonomous coding-agent
+replacement; requests that explicitly ask for autonomous planning fail loudly
+with `autonomous_planning_not_supported`.
+
+Use Hermes, Codex, Claude Code, or another higher-level coding agent for
+planning/replanning, and use this service for controlled local tool execution,
+retrieval, metrics, and patch guardrails.
+
+Example:
 
 ```bash
 # List available tools and input schemas
@@ -451,6 +490,11 @@ Useful flags:
 - `--force-fake-embed` to force deterministic fallback vectors (debug/safe mode)
 - `--schema-path` and `--migration-log-path` to customize schema/migration files
 
+`ai-dev embed-stats` now also summarizes the local JSONL sink and prints the
+last observed vector backend. Treat `local_http` as the real embedding path and
+`deterministic_fallback` as a degraded but deterministic fallback path that is
+safe for debugging, not a semantic-quality signal.
+
 Worker metadata files:
 
 - `.ai-dev/embedding_schema.json`
@@ -484,6 +528,13 @@ The explain command returns per-result score components (`score_breakdown`) for:
 - changed file
 - branch match
 - recency
+- semantic vector score when `.ai-dev/embeddings.jsonl` has a matching path
+
+If no semantic vectors are available, retrieval reports `semantic.fallback` as
+`lexical_symbol_only` and preserves the existing lexical/symbol ranking path.
+When embeddings exist, `memory explain --json` reports `semantic.fallback` as
+`hybrid_jsonl` and includes the vector backend (for example `local_http` or
+`deterministic_fallback`) in the chunk score breakdown.
 
 ### 16) Shared KV cache (Milestone 9)
 
@@ -577,6 +628,39 @@ Then inspect:
 curl "http://localhost:8091/metrics"
 curl "http://localhost:8093/stats"
 ```
+
+## Hermes project workflow
+
+This repo is tracked in the shared Hermes backlog under `project_id=mlx-stack`.
+The repeatable Hermes-facing workflow is intentionally thin and uses the same
+standalone CLI contract as human operators:
+
+```bash
+# from the repository root
+uv venv
+source .venv/bin/activate
+uv pip install -e .[mlx-host]
+ai-dev init
+ai-dev pull-models --dry-run
+ai-dev up
+ai-dev status
+```
+
+`ai-dev status` is the Hermes health surface for this project. It distinguishes
+host MLX reachability, LiteLLM reachability, agent health, spec-router,
+embed-queue, RAG, Qdrant, native MLX acceleration settings, and embedding route
+configuration. A partially-up stack should be treated as degraded until each
+required service for the task is reachable.
+
+Shutdown uses the same supported path:
+
+```bash
+ai-dev down
+```
+
+If the stack is degraded, inspect `.ai-dev/mlx_host.log` for host MLX startup
+failures and use the per-service status lines to separate host-MLX failures from
+LiteLLM/container-service failures.
 
 ## Notes
 

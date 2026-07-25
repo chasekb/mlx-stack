@@ -15,6 +15,9 @@ class TestInitOpsDefaults(unittest.TestCase):
         self.assertIn("agent/http_service.py", template_map)
         self.assertIn("embedding_worker/worker.py", template_map)
         self.assertTrue(template_map["mlx/entrypoint.sh"][1])
+        self.assertIn("container-native MLX inference is deprecated", template_map["mlx/entrypoint.sh"][0])
+        self.assertNotIn("container_name: ai-dev-mlx", template_map["podman-compose.yml"][0])
+        self.assertIn("EMBED_MODEL", template_map["podman-compose.yml"][0])
 
     def test_core_paths_constants_match_expected_locations(self) -> None:
         self.assertEqual(paths.APP_DIR, Path(".ai-dev"))
