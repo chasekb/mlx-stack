@@ -25,11 +25,11 @@
   "models": [
     {
       "name": "local-mlx-fast",
-      "backend_model": "openai/local-mlx-fast",
+      "backend_model": "openai/models/local-mlx-fast",
       "api_base": "http://host.containers.internal:8082/v1",
       "api_key": "local-dev",
-      "hf_model": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
-      "mlx_model": "mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit",
+      "hf_model": "Qwen/Qwen3.5-0.8B",
+      "mlx_model": "mlx-community/Qwen3.5-0.8B-MLX-4bit",
       "output_path": "models/local-mlx-fast",
       "quantization": "4bit",
       "tags": [
@@ -39,11 +39,11 @@
     },
     {
       "name": "local-mlx",
-      "backend_model": "openai/local-mlx",
+      "backend_model": "openai/models/local-mlx",
       "api_base": "http://host.containers.internal:8082/v1",
       "api_key": "local-dev",
-      "hf_model": "Qwen/Qwen2.5-Coder-3B-Instruct",
-      "mlx_model": "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
+      "hf_model": "Qwen/Qwen3.5-4B",
+      "mlx_model": "mlx-community/Qwen3.5-4B-MLX-4bit",
       "output_path": "models/local-mlx",
       "quantization": "4bit",
       "tags": [
@@ -53,11 +53,11 @@
     },
     {
       "name": "local-mlx-longctx",
-      "backend_model": "openai/local-mlx-longctx",
+      "backend_model": "openai/models/local-mlx-longctx",
       "api_base": "http://host.containers.internal:8082/v1",
       "api_key": "local-dev",
-      "hf_model": "Qwen/Qwen2.5-Coder-7B-Instruct",
-      "mlx_model": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "hf_model": "Qwen/Qwen3.5-9B",
+      "mlx_model": "mlx-community/Qwen3.5-9B-MLX-4bit",
       "output_path": "models/local-mlx-longctx",
       "quantization": "4bit",
       "tags": [
@@ -67,7 +67,7 @@
     },
     {
       "name": "local-mlx-agentic",
-      "backend_model": "openai/local-mlx-agentic",
+      "backend_model": "openai/models/local-mlx-agentic",
       "api_base": "http://host.containers.internal:8082/v1",
       "api_key": "local-dev",
       "hf_model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",

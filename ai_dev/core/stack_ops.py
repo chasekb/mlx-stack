@@ -4,6 +4,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import socket
 import subprocess
 import sys
@@ -12,10 +13,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
-def compose_command(compose_file: Path) -> list[str]:
+def compose_command(compose_file: Path, *, which_fn=shutil.which) -> list[str]:
     if not compose_file.exists():
         print("Missing podman-compose.yml. Run `ai-dev init` first.", file=sys.stderr)
         raise SystemExit(2)
+    if which_fn("podman-compose"):
+        return ["podman-compose", "-f", str(compose_file)]
     return ["podman", "compose", "-f", str(compose_file)]
 
 

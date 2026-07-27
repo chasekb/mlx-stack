@@ -20,13 +20,31 @@ class _FakeProc:
 
 
 class TestStackOpsHostMlx(unittest.TestCase):
+    def test_compose_command_prefers_direct_podman_compose_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            compose_file = Path(tmpdir) / "podman-compose.yml"
+            compose_file.write_text("services: {}\n", encoding="utf-8")
+
+            cmd = stack_ops.compose_command(compose_file, which_fn=lambda name: f"/usr/local/bin/{name}" if name == "podman-compose" else None)
+
+        self.assertEqual(cmd, ["podman-compose", "-f", str(compose_file)])
+
+    def test_compose_command_falls_back_to_podman_compose_plugin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            compose_file = Path(tmpdir) / "podman-compose.yml"
+            compose_file.write_text("services: {}\n", encoding="utf-8")
+
+            cmd = stack_ops.compose_command(compose_file, which_fn=lambda _name: None)
+
+        self.assertEqual(cmd, ["podman", "compose", "-f", str(compose_file)])
+
     def test_generate_litellm_config_prefers_stack_mlx_api_base(self) -> None:
         cfg = {
             "stack": {"mlx_api_base": "http://host.containers.internal:8082/v1"},
             "models": [
                 {
                     "name": "local-mlx",
-                    "backend_model": "openai/local-mlx",
+                    "backend_model": "openai/models/local-mlx",
                     "api_key": "local-dev",
                 }
             ],
@@ -35,6 +53,7 @@ class TestStackOpsHostMlx(unittest.TestCase):
 
         rendered = stack_ops.generate_litellm_config(cfg, cfg["models"])
         self.assertIn("api_base: http://host.containers.internal:8082/v1", rendered)
+        self.assertIn("model: openai/models/local-mlx", rendered)
         self.assertIn("litellm_settings:", rendered)
         self.assertIn("request_timeout: 120", rendered)
 

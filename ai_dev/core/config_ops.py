@@ -33,7 +33,7 @@ DEFAULT_CONFIG = {
     "models": [
         {
             "name": "local-mlx-fast",
-            "backend_model": "openai/local-mlx-fast",
+            "backend_model": "openai/models/local-mlx-fast",
             "api_base": "http://host.containers.internal:8082/v1",
             "api_key": "local-dev",
             "hf_model": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
         },
         {
             "name": "local-mlx",
-            "backend_model": "openai/local-mlx",
+            "backend_model": "openai/models/local-mlx",
             "api_base": "http://host.containers.internal:8082/v1",
             "api_key": "local-dev",
             "hf_model": "Qwen/Qwen2.5-Coder-3B-Instruct",
@@ -53,7 +53,7 @@ DEFAULT_CONFIG = {
         },
         {
             "name": "local-mlx-longctx",
-            "backend_model": "openai/local-mlx-longctx",
+            "backend_model": "openai/models/local-mlx-longctx",
             "api_base": "http://host.containers.internal:8082/v1",
             "api_key": "local-dev",
             "hf_model": "Qwen/Qwen2.5-Coder-7B-Instruct",
@@ -63,7 +63,7 @@ DEFAULT_CONFIG = {
         },
         {
             "name": "local-mlx-agentic",
-            "backend_model": "openai/local-mlx-agentic",
+            "backend_model": "openai/models/local-mlx-agentic",
             "api_base": "http://host.containers.internal:8082/v1",
             "api_key": "local-dev",
             "hf_model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",

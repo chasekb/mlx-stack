@@ -104,11 +104,12 @@ project environment before starting the Podman services. It also starts the full
 stack by default, including services that were previously behind the compose `optional`
 profile such as `agent`, `spec-router`, `embed-queue`, `embed-worker`, `rag`, and `qdrant`.
 
-On systems where the external compose provider is `podman-compose`, `ai-dev` now enables
-the optional service set through `COMPOSE_PROFILES=optional` instead of passing a
-`--profile` flag directly. This preserves the default full-stack behavior while avoiding
-the `podman-compose: error: unrecognized arguments: --profile` failure mode seen in some
-provider/version combinations.
+When `podman-compose` is installed, `ai-dev` invokes it directly instead of routing through
+`podman compose` and the Podman-selected external provider. This avoids accidental fallback
+to Docker Compose contexts/sockets on macOS. It also enables the optional service set
+through `COMPOSE_PROFILES=optional` instead of passing a `--profile` flag directly,
+preserving the default full-stack behavior while avoiding the `podman-compose: error:
+unrecognized arguments: --profile` failure mode seen in some provider/version combinations.
 
 By default it prefers:
 
@@ -118,6 +119,11 @@ By default it prefers:
 
 It records the managed process under `.ai-dev/mlx_host_process.json` and writes MLX server
 output to `.ai-dev/mlx_host.log`.
+
+LiteLLM keeps the stable public aliases such as `local-mlx`, but forwards them to the
+host MLX server as local artifact paths such as `models/local-mlx`. This matches the
+model ids exposed by `mlx_lm.server` and avoids attempts to resolve alias names like
+`local-mlx` as Hugging Face repositories.
 
 ### Important MLX runtime note
 
